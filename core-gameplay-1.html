@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Core Gameplay Prototype 1</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: Arial, Helvetica, sans-serif;
+        background: #263238;
+        color: #f7faf8;
+      }
+
+      main {
+        width: min(680px, calc(100% - 32px));
+      }
+
+      .playfield {
+        border: 3px solid #8fd19e;
+        padding: 24px;
+        background: #172126;
+      }
+
+      .player {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: #ffd166;
+        margin: 24px auto;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Core Gameplay Prototype 1</h1>
+      <section class="playfield" aria-label="prototype playfield">
+        <p>Core gameplay: move, explore, and collect resources in the main playable space.</p>
+        <div class="player" aria-label="player marker"></div>
+        <p>Placeholder interaction target for the first gameplay test.</p>
+      </section>
+    </main>
+  </body>
+</html>
