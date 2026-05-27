@@ -7,6 +7,47 @@
 
   const BPM = 120;
   const STRONG_BEAT_EVERY = 4;
+  const VOLUME_KEY = "basslineBurnoutVolume";
+  const MAIN_MENU_URL = "../cinematics-prototype/index.html?scene=mainMenu";
+  const LEADERBOARD_KEY = "basslineBurnoutLeaderboard";
+
+  function getGameVolume() {
+    const saved = Number(localStorage.getItem(VOLUME_KEY));
+    if (Number.isFinite(saved)) {
+      return Math.max(0, Math.min(1, saved));
+    }
+    return 0.5;
+  }
+  function getLeaderboard() {
+    const saved = localStorage.getItem(LEADERBOARD_KEY);
+
+    if (!saved) {
+      return [];
+    }
+
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return [];
+    }
+  }
+
+  function saveLeaderboardScore(name, score) {
+    const cleanName = (name || "Player").trim().slice(0, 12) || "Player";
+
+    const leaderboard = getLeaderboard();
+    leaderboard.push({
+      name: cleanName,
+      score: score,
+    });
+
+    leaderboard.sort((a, b) => b.score - a.score);
+
+    const topScores = leaderboard.slice(0, 5);
+    localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(topScores));
+
+    return topScores;
+  }
 
   class BeatManager {
     constructor(scene, bpm = BPM) {
@@ -101,7 +142,8 @@
       osc.type = "sine";
       osc.frequency.setValueAtTime(strong ? 120 : 90, time);
       osc.frequency.exponentialRampToValueAtTime(42, time + 0.16);
-      gain.gain.setValueAtTime(strong ? 0.22 : 0.16, time);
+      const volume = Math.max(getGameVolume(), 0.001);
+      gain.gain.setValueAtTime((strong ? 0.22 : 0.16) * volume, time);
       gain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
 
       osc.connect(gain);
@@ -120,7 +162,8 @@
       osc.frequency.setValueAtTime(notes[index % notes.length], time);
       filter.type = "lowpass";
       filter.frequency.setValueAtTime(420, time);
-      gain.gain.setValueAtTime(0.055, time);
+      const volume = Math.max(getGameVolume(), 0.001);
+      gain.gain.setValueAtTime(0.055 * volume, time);
       gain.gain.exponentialRampToValueAtTime(0.001, time + 0.28);
 
       osc.connect(filter);
@@ -146,7 +189,8 @@
       noise.buffer = buffer;
       filter.type = "highpass";
       filter.frequency.setValueAtTime(5200, time);
-      gain.gain.setValueAtTime(0.035, time);
+      const volume = Math.max(getGameVolume(), 0.001);
+      gain.gain.setValueAtTime(0.035 * volume, time);
       gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
 
       noise.connect(filter);
@@ -372,7 +416,6 @@
       super.destroy(fromScene);
     }
   }
-
   class MenuScene extends Phaser.Scene {
     constructor() {
       super("MenuScene");
@@ -403,12 +446,32 @@
         .setOrigin(0.5);
 
       const prompt = this.add
-        .text(width / 2, height * 0.7, "Press SPACE to Start", {
+        .text(width / 2, height * 0.68, "Touch to Play", {
           fontFamily: "Arial",
           fontSize: "24px",
           color: "#ffffff",
+          backgroundColor: "#111827",
+          padding: {
+            x: 18,
+            y: 10,
+          },
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
+
+      const backButton = this.add
+        .text(width / 2, height * 0.82, "Back to Main Menu", {
+          fontFamily: "Arial",
+          fontSize: "20px",
+          color: "#ffffff",
+          backgroundColor: "#111827",
+          padding: {
+            x: 18,
+            y: 10,
+          },
+        })
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
 
       this.tweens.add({
         targets: title,
@@ -421,16 +484,49 @@
 
       this.tweens.add({
         targets: prompt,
-        alpha: 0.35,
+        alpha: 0.45,
         duration: 420,
         yoyo: true,
         repeat: -1,
         ease: "Sine.easeInOut",
       });
 
-      this.input.keyboard.once("keydown-SPACE", () => {
+      let hasStarted = false;
+
+      const startGame = () => {
+        if (hasStarted) return;
+        hasStarted = true;
+
         this.cameras.main.flash(180, 53, 244, 255);
         this.time.delayedCall(120, () => this.scene.start("GameScene"));
+      };
+
+      prompt.on("pointerover", () => {
+        prompt.setStyle({ color: "#fff45b" });
+      });
+
+      prompt.on("pointerout", () => {
+        prompt.setStyle({ color: "#ffffff" });
+      });
+
+      prompt.on("pointerdown", startGame);
+
+      this.input.keyboard.once("keydown-SPACE", startGame);
+
+      backButton.on("pointerover", () => {
+        backButton.setStyle({ color: "#fff45b" });
+      });
+
+      backButton.on("pointerout", () => {
+        backButton.setStyle({ color: "#ffffff" });
+      });
+
+      backButton.on("pointerdown", () => {
+        this.cameras.main.fadeOut(350, 0, 0, 0);
+
+        this.cameras.main.once("camerafadeoutcomplete", () => {
+          window.location.href = MAIN_MENU_URL;
+        });
       });
     }
 
@@ -454,6 +550,7 @@
   const WORLD_SCROLL_SPEED = 220;
   const SPEED_GAIN_PER_BEAT = 3.2;
   const MAX_SCROLL_SPEED = 470;
+  const SPEED_GAIN_PER_SECOND = 16;
   const ROAD_WIDTH = 560;
   const SPAWN_Y = -60;
   const SAFE_ZONE_RADIUS = 92;
@@ -484,6 +581,12 @@
       if (this.isGameOver) return;
 
       this.beatManager.update(delta);
+
+      this.scrollSpeed = Math.min(
+        MAX_SCROLL_SPEED,
+        this.scrollSpeed + SPEED_GAIN_PER_SECOND * (delta / 1000)
+      );
+
       this.updateBackground(delta);
 
       const drifting = this.player.update(this.cursors, this.keys, delta);
@@ -494,6 +597,7 @@
       this.obstacles.getChildren().forEach((obstacle) => {
         if (!obstacle.active) return;
 
+        obstacle.setScrollSpeed(this.scrollSpeed);
         obstacle.preUpdate();
 
         if (!obstacle.passed && obstacle.y > this.player.y + 40) {
@@ -585,7 +689,6 @@
     }
 
     onBeat(beat) {
-      this.scrollSpeed = Math.min(MAX_SCROLL_SPEED, this.scrollSpeed + SPEED_GAIN_PER_BEAT);
       this.spawnObstacle(beat);
       this.pulseWorld(beat);
       this.player.onBeat(beat);
@@ -740,12 +843,15 @@
     create() {
       const { width, height } = this.scale;
 
+      const playerName = window.prompt("Enter your name for the leaderboard:", "Player");
+      const leaderboard = saveLeaderboardScore(playerName, this.score);
+
       this.cameras.main.setBackgroundColor("#070713");
 
       this.add
-        .text(width / 2, height * 0.28, "CRASHED", {
+        .text(width / 2, height * 0.16, "CRASHED", {
           fontFamily: "Arial Black, Arial",
-          fontSize: "62px",
+          fontSize: "54px",
           color: "#ff2b6d",
           stroke: "#ffffff",
           strokeThickness: 2,
@@ -753,36 +859,99 @@
         .setOrigin(0.5);
 
       this.add
-        .text(width / 2, height * 0.46, `Score ${this.score}\nBest Combo ${this.combo}`, {
+        .text(width / 2, height * 0.30, `Score ${this.score}\nBest Combo ${this.combo}`, {
           fontFamily: "Arial",
-          fontSize: "28px",
+          fontSize: "24px",
           color: "#35f4ff",
           align: "center",
-          lineSpacing: 12,
+          lineSpacing: 10,
+        })
+        .setOrigin(0.5);
+
+      const leaderboardText = leaderboard
+        .map((entry, index) => {
+          return `${index + 1}. ${entry.name} - ${entry.score}`;
+        })
+        .join("\n");
+
+      this.add
+        .text(width / 2, height * 0.50, `Leaderboard\n${leaderboardText}`, {
+          fontFamily: "Arial",
+          fontSize: "22px",
+          color: "#fff45b",
+          align: "center",
+          lineSpacing: 8,
         })
         .setOrigin(0.5);
 
       const retry = this.add
-        .text(width / 2, height * 0.7, "Press SPACE to Retry", {
+        .text(width / 2, height * 0.74, "Touch to Retry", {
           fontFamily: "Arial",
           fontSize: "24px",
           color: "#ffffff",
+          backgroundColor: "#111827",
+          padding: {
+            x: 18,
+            y: 10,
+          },
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
 
       this.tweens.add({
         targets: retry,
         scale: 1.06,
-        alpha: 0.45,
+        alpha: 0.55,
         duration: 420,
         yoyo: true,
         repeat: -1,
         ease: "Sine.easeInOut",
       });
 
-      this.input.keyboard.once("keydown-SPACE", () => {
+      const restartGame = () => {
         this.cameras.main.flash(160, 53, 244, 255);
         this.time.delayedCall(100, () => this.scene.start("GameScene"));
+      };
+
+      retry.on("pointerover", () => {
+        retry.setStyle({ color: "#fff45b" });
+      });
+
+      retry.on("pointerout", () => {
+        retry.setStyle({ color: "#ffffff" });
+      });
+
+      retry.on("pointerdown", restartGame);
+
+      this.input.keyboard.once("keydown-SPACE", restartGame);
+
+      const backButton = this.add
+        .text(width / 2, height * 0.88, "Back to Main Menu", {
+          fontFamily: "Arial",
+          fontSize: "22px",
+          backgroundColor: "#111827",
+          padding: {
+            x: 18,
+            y: 10,
+          },
+        })
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
+
+      backButton.on("pointerover", () => {
+        backButton.setStyle({ color: "#fff45b" });
+      });
+
+      backButton.on("pointerout", () => {
+        backButton.setStyle({ color: "#ffffff" });
+      });
+
+      backButton.on("pointerdown", () => {
+        this.cameras.main.fadeOut(350, 0, 0, 0);
+
+        this.cameras.main.once("camerafadeoutcomplete", () => {
+          window.location.href = MAIN_MENU_URL;
+        });
       });
     }
   }
