@@ -48,6 +48,42 @@
 
     return topScores;
   }
+  function isFullscreen() {
+    return document.fullscreenElement || document.webkitFullscreenElement;
+  }
+
+  async function toggleFullscreen() {
+    try {
+      if (isFullscreen()) {
+        const exit =
+          document.exitFullscreen ||
+          document.webkitExitFullscreen;
+
+        if (exit) {
+          await exit.call(document);
+        }
+        return;
+      }
+
+      const element = document.documentElement;
+      const request =
+        element.requestFullscreen ||
+        element.webkitRequestFullscreen ||
+        element.msRequestFullscreen;
+
+      if (request) {
+        await request.call(element);
+      }
+
+      try {
+        await screen.orientation?.lock?.("landscape");
+      } catch (error) {
+        // Some mobile browsers do not allow orientation lock.
+      }
+    } catch (error) {
+      console.log("Fullscreen is not supported on this browser.", error);
+    }
+  }
 
   class BeatManager {
     constructor(scene, bpm = BPM) {
@@ -254,18 +290,62 @@
       );
     }
 
-    update(cursors, keys, deltaMs) {
+    update(cursors, keys, deltaMs, touchControl) {
       const delta = deltaMs / 1000;
-      const left = cursors.left.isDown || keys.left.isDown;
-      const right = cursors.right.isDown || keys.right.isDown;
-      const drifting = keys.shift.isDown && (left || right);
-      const direction = (right ? 1 : 0) - (left ? 1 : 0);
+
+      const keyboardLeft = cursors.left.isDown || keys.left.isDown;
+      const keyboardRight = cursors.right.isDown || keys.right.isDown;
+
+      let direction = (keyboardRight ? 1 : 0) - (keyboardLeft ? 1 : 0);
+      let drifting = keys.shift.isDown && direction !== 0;
+
+      const touchActive =
+        touchControl &&
+        touchControl.active &&
+        Number.isFinite(touchControl.targetX);
+
+      if (touchActive) {
+        const targetX = Phaser.Math.Clamp(
+          touchControl.targetX,
+          this.minRoadX,
+          this.maxRoadX
+        );
+
+        const distance = targetX - this.x;
+
+        if (Math.abs(distance) > 8) {
+          direction = Math.sign(distance);
+
+          const targetVelocity = Phaser.Math.Clamp(
+            distance * 8,
+            -DRIFT_MAX_X_SPEED,
+            DRIFT_MAX_X_SPEED
+          );
+
+          this.body.setVelocityX(
+            Phaser.Math.Linear(this.body.velocity.x, targetVelocity, 0.2)
+          );
+        } else {
+          direction = 0;
+          this.body.setVelocityX(
+            Phaser.Math.Linear(this.body.velocity.x, 0, 0.25)
+          );
+        }
+
+        drifting = Math.abs(distance) > 55;
+      }
 
       this.body.setDragX(drifting ? DRIFT_DRAG : NORMAL_DRAG);
       this.body.setMaxVelocity(drifting ? DRIFT_MAX_X_SPEED : MAX_X_SPEED, 0);
 
-      if (direction !== 0) {
-        this.body.setAccelerationX(direction * (drifting ? DRIFT_ACCEL : NORMAL_ACCEL));
+      if (!touchActive) {
+        if (direction !== 0) {
+          this.body.setAccelerationX(
+            direction * (drifting ? DRIFT_ACCEL : NORMAL_ACCEL)
+          );
+        } else {
+          this.body.setAccelerationX(0);
+        }
       } else {
         this.body.setAccelerationX(0);
       }
@@ -276,9 +356,19 @@
         1
       );
 
-      const speedLean = Phaser.Math.Clamp(this.body.velocity.x / DRIFT_MAX_X_SPEED, -1, 1);
+      const speedLean = Phaser.Math.Clamp(
+        this.body.velocity.x / DRIFT_MAX_X_SPEED,
+        -1,
+        1
+      );
+
       const targetRotation = speedLean * (drifting ? 0.44 : 0.22);
-      this.rotation = Phaser.Math.Linear(this.rotation, targetRotation, drifting ? 0.16 : 0.22);
+      this.rotation = Phaser.Math.Linear(
+        this.rotation,
+        targetRotation,
+        drifting ? 0.16 : 0.22
+      );
+
       this.glow.alpha = 0.14 + this.driftEnergy * 0.24;
       this.glow.scaleX = 1 + this.driftEnergy * 0.24;
 
@@ -459,6 +549,31 @@
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
 
+      const fullscreenButton = this.add
+        .text(width / 2, height * 0.76, "Fullscreen", {
+          fontFamily: "Arial",
+          fontSize: "20px",
+          color: "#ffffff",
+          backgroundColor: "#111827",
+          padding: {
+            x: 18,
+            y: 10,
+          },
+        })
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
+
+      fullscreenButton.on("pointerover", () => {
+        fullscreenButton.setStyle({ color: "#fff45b" });
+      });
+
+      fullscreenButton.on("pointerout", () => {
+        fullscreenButton.setStyle({ color: "#ffffff" });
+      });
+
+      fullscreenButton.on("pointerdown", () => {
+        toggleFullscreen();
+      });
       const backButton = this.add
         .text(width / 2, height * 0.82, "Back to Main Menu", {
           fontFamily: "Arial",
@@ -589,10 +704,12 @@
 
       this.updateBackground(delta);
 
-      const drifting = this.player.update(this.cursors, this.keys, delta);
-      if (drifting) {
-        this.lastBeatWithDrift = this.beatManager.beatIndex;
-      }
+      const drifting = this.player.update(
+        this.cursors,
+        this.keys,
+        delta,
+        this.touchControl
+      );
 
       this.obstacles.getChildren().forEach((obstacle) => {
         if (!obstacle.active) return;
@@ -660,6 +777,35 @@
         left: Phaser.Input.Keyboard.KeyCodes.A,
         right: Phaser.Input.Keyboard.KeyCodes.D,
         shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
+      });
+
+      this.touchControl = {
+        active: false,
+        targetX: this.scale.width / 2,
+      };
+
+      const updateTouchTarget = (pointer) => {
+        this.touchControl.active = true;
+        this.touchControl.targetX = Phaser.Math.Clamp(
+          pointer.x,
+          this.roadLeft,
+          this.roadRight
+        );
+      };
+
+      this.input.on("pointerdown", updateTouchTarget);
+
+      this.input.on("pointermove", (pointer) => {
+        if (!pointer.isDown) return;
+        updateTouchTarget(pointer);
+      });
+
+      this.input.on("pointerup", () => {
+        this.touchControl.active = false;
+      });
+
+      this.input.on("pointerupoutside", () => {
+        this.touchControl.active = false;
       });
     }
 
