@@ -1124,4 +1124,14 @@
   };
 
   window.game = new Phaser.Game(config);
+
+  window.addEventListener("resize", () => {
+    window.game.scale.refresh();
+  });
+
+  window.addEventListener("orientationchange", () => {
+    setTimeout(() => {
+      window.game.scale.refresh();
+    }, 300);
+  });
 })();
