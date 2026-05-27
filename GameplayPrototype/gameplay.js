@@ -550,17 +550,18 @@
         .setInteractive({ useHandCursor: true });
 
       const fullscreenButton = this.add
-        .text(width / 2, height * 0.76, "Fullscreen", {
+        .text(width - 24, height - 24, "Fullscreen", {
           fontFamily: "Arial",
-          fontSize: "20px",
+          fontSize: "18px",
           color: "#ffffff",
           backgroundColor: "#111827",
           padding: {
-            x: 18,
-            y: 10,
+            x: 14,
+            y: 8,
           },
         })
-        .setOrigin(0.5)
+        .setOrigin(1, 1)
+        .setDepth(20)
         .setInteractive({ useHandCursor: true });
 
       fullscreenButton.on("pointerover", () => {
