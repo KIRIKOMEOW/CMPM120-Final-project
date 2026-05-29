@@ -1,5 +1,6 @@
 Gameplay Prototype: Music Drift Runner
 ======================================
+Playable link:https://kirikomeow.github.io/CMPM120-Final-project/GameplayPrototype/index.html
 
 Music Drift Runner is the core gameplay prototype for our final project. It is a rhythm-driven arcade runner made with Phaser. The player controls a neon car, dodges beat-spawned obstacles, and tries to build score and combo while the road speed increases over time.
 
