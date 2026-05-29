@@ -8,15 +8,21 @@
   const BPM = 120;
   const STRONG_BEAT_EVERY = 4;
   const VOLUME_KEY = "basslineBurnoutVolume";
+  const DEFAULT_VOLUME = 0.3;
   const MAIN_MENU_URL = "../cinematics-prototype/index.html?scene=mainMenu";
   const LEADERBOARD_KEY = "basslineBurnoutLeaderboard";
 
   function getGameVolume() {
-    const saved = Number(localStorage.getItem(VOLUME_KEY));
+    const savedValue = localStorage.getItem(VOLUME_KEY);
+    if (savedValue === null) {
+      return DEFAULT_VOLUME;
+    }
+
+    const saved = Number(savedValue);
     if (Number.isFinite(saved)) {
       return Math.max(0, Math.min(1, saved));
     }
-    return 0.5;
+    return DEFAULT_VOLUME;
   }
   function getLeaderboard() {
     const saved = localStorage.getItem(LEADERBOARD_KEY);

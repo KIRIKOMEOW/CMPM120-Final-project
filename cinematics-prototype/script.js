@@ -1,12 +1,18 @@
 const VOLUME_KEY = 'basslineBurnoutVolume';
+const DEFAULT_VOLUME = 0.3;
 const GAMEPLAY_URL = '../GameplayPrototype/index.html';
 
 function getGameVolume() {
-    const saved = Number(localStorage.getItem(VOLUME_KEY));
+    const savedValue = localStorage.getItem(VOLUME_KEY);
+    if (savedValue === null) {
+        return DEFAULT_VOLUME;
+    }
+
+    const saved = Number(savedValue);
     if (Number.isFinite(saved)) {
         return Math.max(0, Math.min(1, saved));
     }
-    return 0.5;
+    return DEFAULT_VOLUME;
 }
 
 function setGameVolume(value) {
