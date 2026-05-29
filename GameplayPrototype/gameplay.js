@@ -165,6 +165,7 @@
       const now = this.audioContext.currentTime;
       this.playKick(now, beat.strong);
       this.playHat(now + this.beatIntervalSec * 0.5);
+      this.playMusicLayer(now, beat);
 
       if (beat.strong || beat.index % 2 === 0) {
         this.playBass(now, beat.index);
@@ -209,8 +210,75 @@
       osc.stop(time + 0.3);
     }
 
+    playMusicLayer(time, beat) {
+      if (beat.strong) {
+        this.playChord(time, beat.index);
+      }
+
+      this.playArp(time + this.beatIntervalSec * 0.25, beat.index);
+
+      if (beat.index % 2 === 1) {
+        this.playArp(time + this.beatIntervalSec * 0.75, beat.index + 2);
+      }
+    }
+
+    playChord(time, index) {
+      const chords = [
+        [220, 277.18, 329.63],
+        [196, 246.94, 293.66],
+        [164.81, 207.65, 246.94],
+        [174.61, 220, 261.63],
+      ];
+      const chord = chords[Math.floor(index / STRONG_BEAT_EVERY) % chords.length];
+      const volume = Math.max(getGameVolume(), 0.001);
+
+      chord.forEach((frequency, noteIndex) => {
+        const osc = this.audioContext.createOscillator();
+        const filter = this.audioContext.createBiquadFilter();
+        const gain = this.audioContext.createGain();
+        const startTime = time + noteIndex * 0.018;
+
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(frequency, startTime);
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(980, startTime);
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.035 * volume, startTime + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.62);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.audioContext.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.66);
+      });
+    }
+
+    playArp(time, index) {
+      const notes = [440, 493.88, 554.37, 659.25, 739.99, 659.25, 554.37, 493.88];
+      const osc = this.audioContext.createOscillator();
+      const filter = this.audioContext.createBiquadFilter();
+      const gain = this.audioContext.createGain();
+      const volume = Math.max(getGameVolume(), 0.001);
+
+      osc.type = "square";
+      osc.frequency.setValueAtTime(notes[index % notes.length], time);
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(1600, time);
+      filter.Q.setValueAtTime(5.5, time);
+      gain.gain.setValueAtTime(0.001, time);
+      gain.gain.exponentialRampToValueAtTime(0.028 * volume, time + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.105);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.audioContext.destination);
+      osc.start(time);
+      osc.stop(time + 0.12);
+    }
+
     playHat(time) {
-      const bufferSize = this.audioContext.sampleRate * 0.035;
+      const bufferSize = Math.floor(this.audioContext.sampleRate * 0.035);
       const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
       const output = buffer.getChannelData(0);
 
@@ -234,6 +302,76 @@
       gain.connect(this.audioContext.destination);
       noise.start(time);
       noise.stop(time + 0.045);
+    }
+
+    playCrashSound() {
+      if (!this.audioContext) return;
+
+      const now = this.audioContext.currentTime;
+      const volume = Math.max(getGameVolume(), 0.001);
+      this.playCrashNoise(now, volume);
+      this.playCrashDrop(now, volume);
+      this.playCrashRing(now + 0.02, volume);
+    }
+
+    playCrashNoise(time, volume) {
+      const bufferSize = Math.floor(this.audioContext.sampleRate * 0.32);
+      const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+      const output = buffer.getChannelData(0);
+
+      for (let i = 0; i < bufferSize; i += 1) {
+        const decay = 1 - i / bufferSize;
+        output[i] = (Math.random() * 2 - 1) * decay;
+      }
+
+      const noise = this.audioContext.createBufferSource();
+      const filter = this.audioContext.createBiquadFilter();
+      const gain = this.audioContext.createGain();
+
+      noise.buffer = buffer;
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(2600, time);
+      filter.frequency.exponentialRampToValueAtTime(360, time + 0.26);
+      gain.gain.setValueAtTime(0.26 * volume, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.audioContext.destination);
+      noise.start(time);
+      noise.stop(time + 0.32);
+    }
+
+    playCrashDrop(time, volume) {
+      const osc = this.audioContext.createOscillator();
+      const gain = this.audioContext.createGain();
+
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(190, time);
+      osc.frequency.exponentialRampToValueAtTime(36, time + 0.22);
+      gain.gain.setValueAtTime(0.2 * volume, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+
+      osc.connect(gain);
+      gain.connect(this.audioContext.destination);
+      osc.start(time);
+      osc.stop(time + 0.26);
+    }
+
+    playCrashRing(time, volume) {
+      const osc = this.audioContext.createOscillator();
+      const gain = this.audioContext.createGain();
+
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(720, time);
+      osc.frequency.exponentialRampToValueAtTime(120, time + 0.16);
+      gain.gain.setValueAtTime(0.11 * volume, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+
+      osc.connect(gain);
+      gain.connect(this.audioContext.destination);
+      osc.start(time);
+      osc.stop(time + 0.19);
     }
   }
 
@@ -954,6 +1092,7 @@
 
       this.isGameOver = true;
       this.combo = 0;
+      this.beatManager.playCrashSound();
       this.beatManager.stop();
       this.physics.pause();
       this.cameras.main.shake(260, 0.018);
