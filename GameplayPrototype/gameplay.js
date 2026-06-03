@@ -11,6 +11,30 @@
   const DEFAULT_VOLUME = 0.3;
   const MAIN_MENU_URL = "../cinematics-prototype/index.html?scene=mainMenu";
   const LEADERBOARD_KEY = "basslineBurnoutLeaderboard";
+  const ASSET_KEYS = {
+    background: "road-background",
+    note: "ui-note",
+    npcCar: "npc-car",
+    npcTruck: "npc-truck",
+    player: "player-car",
+    rhythm: "ui-rhythm",
+  };
+  const ASSET_PATHS = {
+    [ASSET_KEYS.background]: "../assets/background.png",
+    [ASSET_KEYS.note]: "../assets/note.png",
+    [ASSET_KEYS.npcCar]: "../assets/npc_car.png",
+    [ASSET_KEYS.npcTruck]: "../assets/npc_truck.png",
+    [ASSET_KEYS.player]: "../assets/player.png",
+    [ASSET_KEYS.rhythm]: "../assets/rhythm.png",
+  };
+
+  function preloadGameplayAssets(scene) {
+    Object.entries(ASSET_PATHS).forEach(([key, path]) => {
+      if (!scene.textures.exists(key)) {
+        scene.load.image(key, path);
+      }
+    });
+  }
 
   function getGameVolume() {
     const savedValue = localStorage.getItem(VOLUME_KEY);
@@ -283,6 +307,37 @@
       osc.stop(time + 0.12);
     }
 
+    playNotePickupSound() {
+      if (!this.audioContext) return;
+
+      const now = this.audioContext.currentTime;
+      const volume = Math.max(getGameVolume(), 0.001);
+      const notes = [659.25, 880, 1174.66];
+
+      notes.forEach((frequency, index) => {
+        const startTime = now + index * 0.035;
+        const osc = this.audioContext.createOscillator();
+        const filter = this.audioContext.createBiquadFilter();
+        const gain = this.audioContext.createGain();
+
+        osc.type = index === notes.length - 1 ? "triangle" : "square";
+        osc.frequency.setValueAtTime(frequency, startTime);
+        osc.frequency.exponentialRampToValueAtTime(frequency * 1.08, startTime + 0.055);
+        filter.type = "bandpass";
+        filter.frequency.setValueAtTime(1800 + index * 420, startTime);
+        filter.Q.setValueAtTime(4.5, startTime);
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.08 * volume, startTime + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.12);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.audioContext.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.13);
+      });
+    }
+
     playHat(time) {
       const bufferSize = Math.floor(this.audioContext.sampleRate * 0.035);
       const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
@@ -387,8 +442,8 @@
   const DRIFT_ACCEL = 760;
   const NORMAL_DRAG = 1100;
   const DRIFT_DRAG = 260;
-  const CAR_WIDTH = 34;
-  const CAR_HEIGHT = 58;
+  const CAR_WIDTH = 42;
+  const CAR_HEIGHT = 60;
   const MAX_GLOW_SCALE_X = 1.42;
 
   class PlayerCar extends Phaser.GameObjects.Container {
@@ -401,12 +456,12 @@
       this.minRoadX = null;
       this.maxRoadX = null;
 
-      this.glow = scene.add.rectangle(0, 2, CAR_WIDTH + 20, CAR_HEIGHT + 22, 0x00eaff, 0.16);
-      this.bodyRect = scene.add.rectangle(0, 0, CAR_WIDTH, CAR_HEIGHT, 0x21f7ff, 1);
-      this.cabin = scene.add.rectangle(0, -10, CAR_WIDTH - 12, CAR_HEIGHT - 30, 0x08152a, 0.85);
-      this.nose = scene.add.rectangle(0, -CAR_HEIGHT / 2 + 5, CAR_WIDTH - 8, 7, 0xff2bd6, 1);
+      this.glow = scene.add.rectangle(0, 2, CAR_WIDTH + 20, CAR_HEIGHT + 22, 0x00eaff, 0);
+      this.bodySprite = scene.add.image(0, 0, ASSET_KEYS.player);
+      this.bodySprite.setDisplaySize(CAR_WIDTH, CAR_HEIGHT);
+      this.bodyRect = this.bodySprite;
 
-      this.add([this.glow, this.bodyRect, this.cabin, this.nose]);
+      this.add([this.glow, this.bodySprite]);
       scene.add.existing(this);
       scene.physics.add.existing(this);
 
@@ -591,46 +646,53 @@
     }
   }
 
-  const OBSTACLE_COLORS = {
-    block: 0xff2b6d,
-    wall: 0x35f4ff,
-    laser: 0xfff45b,
-  };
-
-  class Obstacle extends Phaser.GameObjects.Rectangle {
+  class Obstacle extends Phaser.GameObjects.Image {
     constructor(scene, x, y, type, speed, beatColor) {
       const size = Obstacle.getSize(type);
-      super(scene, x, y, size.width, size.height, OBSTACLE_COLORS[type] ?? beatColor, 0.95);
+      const visual = Obstacle.getVisual(size);
+      super(scene, x, y, visual.texture);
 
       this.type = type;
       this.passed = false;
       this.baseSpeed = speed;
+      this.collisionWidth = size.width;
+      this.collisionHeight = size.height;
+      this.baseRotation = visual.rotation;
 
+      this.setDisplaySize(visual.width, visual.height);
+      this.setRotation(this.baseRotation);
       scene.add.existing(this);
       scene.physics.add.existing(this);
       this.body.setImmovable(true);
       this.body.setVelocityY(speed);
       this.body.setSize(size.width, size.height);
-      this.setStrokeStyle(type === "laser" ? 2 : 3, beatColor, 1);
-      this.setBlendMode(Phaser.BlendModes.ADD);
 
-      this.glow = scene.add.rectangle(x, y, size.width + 18, size.height + 18, beatColor, 0.14);
+      this.glow = scene.add.rectangle(x, y, visual.width + 18, visual.height + 18, beatColor, 0);
       this.glow.setBlendMode(Phaser.BlendModes.ADD);
-
-      scene.tweens.add({
-        targets: [this, this.glow],
-        scaleX: type === "laser" ? 1.06 : 1.12,
-        scaleY: type === "laser" ? 1.2 : 1.12,
-        duration: 80,
-        yoyo: true,
-        ease: "Quad.easeOut",
-      });
+      this.glow.setRotation(this.rotation);
+      this.glow.setDepth(1);
+      this.setDepth(2);
     }
 
     static getSize(type) {
-      if (type === "wall") return { width: 150, height: 28 };
-      if (type === "laser") return { width: 86, height: 14 };
+      if (type === "wall") return { width: 150, height: 50 };
+      if (type === "laser") return { width: 120, height: 30 };
       return { width: 46, height: 46 };
+    }
+
+    static getVisual(size) {
+      const wide = size.width > size.height * 1.4;
+
+      return {
+        texture: wide ? ASSET_KEYS.npcTruck : ASSET_KEYS.npcCar,
+        width: wide ? size.height : size.width,
+        height: wide ? size.width : size.height,
+        rotation: wide ? Phaser.Math.DegToRad(90) : 0,
+      };
+    }
+
+    setVisualRotation(rotation) {
+      this.setRotation(this.baseRotation + rotation);
     }
 
     preUpdate() {
@@ -653,6 +715,10 @@
   class MenuScene extends Phaser.Scene {
     constructor() {
       super("MenuScene");
+    }
+
+    preload() {
+      preloadGameplayAssets(this);
     }
 
     create() {
@@ -791,19 +857,12 @@
     }
 
     createBackground(width, height) {
-      const graphics = this.add.graphics();
-      graphics.fillStyle(0x050611, 1);
-      graphics.fillRect(0, 0, width, height);
+      const background = this.add.image(width / 2, height / 2, ASSET_KEYS.background);
+      const source = this.textures.get(ASSET_KEYS.background).getSourceImage();
+      const scale = Math.max(width / source.width, height / source.height);
 
-      for (let x = 80; x < width; x += 80) {
-        graphics.lineStyle(1, 0x17304a, 0.45);
-        graphics.lineBetween(x, 0, x, height);
-      }
-
-      for (let y = 40; y < height; y += 40) {
-        graphics.lineStyle(1, 0x2a1450, 0.35);
-        graphics.lineBetween(0, y, width, y);
-      }
+      background.setDisplaySize(source.width * scale, source.height * scale);
+      background.setAlpha(0.42);
     }
   }
 
@@ -814,10 +873,52 @@
   const ROAD_WIDTH = 560;
   const SPAWN_Y = -60;
   const SAFE_ZONE_RADIUS = 92;
+  const NOTE_REWARD_SCORE = 250;
+
+  class NotePickup extends Phaser.GameObjects.Image {
+    constructor(scene, x, y, speed, beatColor) {
+      super(scene, x, y, ASSET_KEYS.note);
+
+      this.baseSpeed = speed;
+
+      this.setDisplaySize(30, 30);
+      this.setTint(beatColor);
+      scene.add.existing(this);
+      scene.physics.add.existing(this);
+      this.body.setImmovable(true);
+      this.body.setVelocityY(speed);
+      this.body.setSize(28, 28);
+
+      this.glow = scene.add.rectangle(x, y, 40, 40, beatColor, 0);
+      this.glow.setBlendMode(Phaser.BlendModes.ADD);
+      this.glow.setDepth(1);
+      this.setDepth(2);
+    }
+
+    preUpdate() {
+      if (this.glow?.active) {
+        this.glow.setPosition(this.x, this.y);
+      }
+    }
+
+    setScrollSpeed(speed) {
+      this.baseSpeed = speed;
+      this.body.setVelocityY(speed);
+    }
+
+    destroy(fromScene) {
+      this.glow?.destroy();
+      super.destroy(fromScene);
+    }
+  }
 
   class GameScene extends Phaser.Scene {
     constructor() {
       super("GameScene");
+    }
+
+    preload() {
+      preloadGameplayAssets(this);
     }
 
     create() {
@@ -875,6 +976,17 @@
         }
       });
 
+      this.notes.getChildren().forEach((note) => {
+        if (!note.active) return;
+
+        note.setScrollSpeed(this.scrollSpeed);
+        note.preUpdate();
+
+        if (note.y > this.scale.height + 100) {
+          note.destroy();
+        }
+      });
+
       this.score += Math.floor(delta * 0.02);
       this.updateUI();
     }
@@ -893,7 +1005,8 @@
       this.roadLeft = this.roadX - ROAD_WIDTH / 2;
       this.roadRight = this.roadX + ROAD_WIDTH / 2;
 
-      this.background = this.add.graphics();
+      this.background = this.add.tileSprite(width / 2, height / 2, width, height, ASSET_KEYS.background);
+      this.backgroundTileScale = 1;
       this.beatFlash = this.add.rectangle(width / 2, height / 2, width, height, 0x35f4ff, 0);
       this.beatFlash.setBlendMode(Phaser.BlendModes.ADD);
 
@@ -908,7 +1021,7 @@
         return this.add.rectangle(x, height - 16, 14, 26, index % 2 ? 0xff2bd6 : 0x35f4ff, 0.34);
       });
 
-      this.drawBackground();
+      this.configureBackground();
     }
 
     createPlayer() {
@@ -955,7 +1068,7 @@
     }
 
     createUI() {
-      this.uiText = this.add.text(24, 20, "", {
+      this.uiText = this.add.text(54, 20, "", {
         fontFamily: "Arial",
         fontSize: "20px",
         color: "#ffffff",
@@ -963,7 +1076,10 @@
       });
       this.uiText.setDepth(10);
 
-      this.beatDot = this.add.circle(28, 114, 8, 0x35f4ff, 1);
+      this.beatDot = this.add.image(30, 108, ASSET_KEYS.rhythm);
+      this.beatDot.setDisplaySize(24, 24);
+      this.beatDotBaseScaleX = this.beatDot.scaleX;
+      this.beatDotBaseScaleY = this.beatDot.scaleY;
       this.beatDot.setDepth(10);
       this.updateUI();
     }
@@ -976,11 +1092,14 @@
 
     createColliders() {
       this.obstacles = this.physics.add.group({ runChildUpdate: false });
+      this.notes = this.physics.add.group({ runChildUpdate: false });
       this.physics.add.overlap(this.player, this.obstacles, () => this.handleCrash());
+      this.physics.add.overlap(this.player, this.notes, (_player, note) => this.collectNote(note));
     }
 
     onBeat(beat) {
-      this.spawnObstacle(beat);
+      const blockedLane = this.spawnObstacle(beat);
+      this.spawnNote(beat, blockedLane);
       this.pulseWorld(beat);
       this.player.onBeat(beat);
 
@@ -1002,7 +1121,7 @@
       const x = this.roadLeft + laneWidth * lane + laneWidth / 2;
 
       if (Math.abs(x - this.player.x) < SAFE_ZONE_RADIUS && beat.strong) {
-        return;
+        return null;
       }
 
       const obstacle = new Obstacle(this, x, SPAWN_Y, type, this.scrollSpeed, beat.color);
@@ -1010,9 +1129,38 @@
       obstacle.setScrollSpeed(this.scrollSpeed);
 
       if (type === "laser") {
-        obstacle.rotation = Phaser.Math.DegToRad(Phaser.Math.Between(-12, 12));
-        obstacle.body.setSize(obstacle.width, obstacle.height);
+        obstacle.setVisualRotation(Phaser.Math.DegToRad(Phaser.Math.Between(-12, 12)));
+        obstacle.body.setSize(obstacle.collisionWidth, obstacle.collisionHeight);
       }
+
+      return lane;
+    }
+
+    spawnNote(beat, blockedLane) {
+      if (beat.index % 2 !== 1) return;
+
+      const laneCount = 5;
+      const laneWidth = ROAD_WIDTH / laneCount;
+      let lane = Phaser.Math.Between(0, laneCount - 1);
+
+      if (lane === blockedLane) {
+        lane = (lane + Phaser.Math.Between(1, laneCount - 1)) % laneCount;
+      }
+
+      const x = this.roadLeft + laneWidth * lane + laneWidth / 2;
+      const note = new NotePickup(this, x, SPAWN_Y - 34, this.scrollSpeed, beat.color);
+
+      this.notes.add(note);
+      note.setScrollSpeed(this.scrollSpeed);
+    }
+
+    collectNote(note) {
+      if (!note?.active) return;
+
+      this.score += NOTE_REWARD_SCORE;
+      this.beatManager.playNotePickupSound();
+      this.pulseUI(0xfff45b);
+      note.destroy();
     }
 
     pulseWorld(beat) {
@@ -1049,10 +1197,23 @@
     }
 
     pulseUI(color) {
-      this.beatDot.setFillStyle(color, 1);
+      this.beatDot.setTint(color);
+      this.tweens.killTweensOf([this.uiText, this.beatDot]);
+      this.uiText.setScale(1);
+      this.beatDot.setScale(this.beatDotBaseScaleX, this.beatDotBaseScaleY);
+
       this.tweens.add({
-        targets: [this.uiText, this.beatDot],
-        scale: 1.12,
+        targets: this.uiText,
+        scale: 1.06,
+        duration: 70,
+        yoyo: true,
+        ease: "Quad.easeOut",
+      });
+
+      this.tweens.add({
+        targets: this.beatDot,
+        scaleX: this.beatDotBaseScaleX * 1.08,
+        scaleY: this.beatDotBaseScaleY * 1.08,
         duration: 70,
         yoyo: true,
         ease: "Quad.easeOut",
@@ -1061,32 +1222,18 @@
 
     updateBackground(delta) {
       this.gridOffset = (this.gridOffset + this.scrollSpeed * delta * 0.001) % 48;
-      this.drawBackground();
+      this.background.tilePositionY -= (this.scrollSpeed * delta * 0.001) / this.backgroundTileScale;
     }
 
-    drawBackground() {
+    configureBackground() {
       const { width, height } = this.scale;
+      const source = this.textures.get(ASSET_KEYS.background).getSourceImage();
+      const scale = Math.max(width / source.width, height / source.height);
 
-      this.background.clear();
-      this.background.fillStyle(0x050611, 1);
-      this.background.fillRect(0, 0, width, height);
-      this.background.fillStyle(0x090b20, 1);
-      this.background.fillRect(this.roadLeft, 0, ROAD_WIDTH, height);
-
-      for (let x = this.roadLeft; x <= this.roadRight; x += ROAD_WIDTH / 5) {
-        this.background.lineStyle(1, 0x1b5e82, 0.42);
-        this.background.lineBetween(x, 0, x, height);
-      }
-
-      for (let y = -48; y < height + 48; y += 48) {
-        this.background.lineStyle(1, 0x281b62, 0.48);
-        this.background.lineBetween(this.roadLeft, y + this.gridOffset, this.roadRight, y + this.gridOffset);
-      }
-
-      this.background.lineStyle(3, 0xff2bd6, 0.8);
-      this.background.lineBetween(this.roadLeft, 0, this.roadLeft, height);
-      this.background.lineStyle(3, 0x35f4ff, 0.8);
-      this.background.lineBetween(this.roadRight, 0, this.roadRight, height);
+      this.background.setSize(width, height);
+      this.background.setPosition(width / 2, height / 2);
+      this.background.setTileScale(scale, scale);
+      this.backgroundTileScale = scale;
     }
 
     updateUI() {
