@@ -6,11 +6,11 @@
   }
 
   const BPM = 120;
+  const STRONG_BEAT_EVERY = 4;
   const VOLUME_KEY = "basslineBurnoutVolume";
   const DEFAULT_VOLUME = 0.3;
   const MAIN_MENU_URL = "../cinematics-prototype/index.html?scene=mainMenu";
   const LEADERBOARD_KEY = "basslineBurnoutLeaderboard";
-
   const ASSET_KEYS = {
     background: "road-background",
     note: "ui-note",
@@ -19,7 +19,6 @@
     player: "player-car",
     rhythm: "ui-rhythm",
   };
-
   const ASSET_PATHS = {
     [ASSET_KEYS.background]: "../assets/background.png",
     [ASSET_KEYS.note]: "../assets/note.png",
@@ -39,20 +38,16 @@
 
   function getGameVolume() {
     const savedValue = localStorage.getItem(VOLUME_KEY);
-
     if (savedValue === null) {
       return DEFAULT_VOLUME;
     }
 
     const saved = Number(savedValue);
-
     if (Number.isFinite(saved)) {
       return Math.max(0, Math.min(1, saved));
     }
-
     return DEFAULT_VOLUME;
   }
-
   function getLeaderboard() {
     const saved = localStorage.getItem(LEADERBOARD_KEY);
 
@@ -69,8 +64,8 @@
 
   function saveLeaderboardScore(name, score) {
     const cleanName = (name || "Player").trim().slice(0, 12) || "Player";
-    const leaderboard = getLeaderboard();
 
+    const leaderboard = getLeaderboard();
     leaderboard.push({
       name: cleanName,
       score: score,
@@ -83,7 +78,6 @@
 
     return topScores;
   }
-
   function isFullscreen() {
     return document.fullscreenElement || document.webkitFullscreenElement;
   }
@@ -91,12 +85,13 @@
   async function toggleFullscreen() {
     try {
       if (isFullscreen()) {
-        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        const exit =
+          document.exitFullscreen ||
+          document.webkitExitFullscreen;
 
         if (exit) {
           await exit.call(document);
         }
-
         return;
       }
 
@@ -113,6 +108,7 @@
       try {
         await screen.orientation?.lock?.("landscape");
       } catch (error) {
+        // Some mobile browsers do not allow orientation lock.
       }
     } catch (error) {
       console.log("Fullscreen is not supported on this browser.", error);
@@ -124,10 +120,12 @@
       this.scene = scene;
       this.bpm = bpm;
       this.beatIntervalMs = 60000 / bpm;
+      this.beatIntervalSec = this.beatIntervalMs / 1000;
       this.beatIndex = 0;
-      this.elapsedMs = 0;
       this.callbacks = [];
       this.audioContext = null;
+      this.startAudioTime = 0;
+      this.fallbackElapsedMs = 0;
       this.isRunning = false;
     }
 
@@ -136,27 +134,26 @@
     }
 
     async start() {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-
-      if (AudioContextClass && !this.audioContext) {
-        this.audioContext = new AudioContextClass();
-      }
+      this.audioContext = this.createAudioContext();
 
       if (this.audioContext?.state === "suspended") {
         await this.audioContext.resume();
       }
 
-      this.elapsedMs = 0;
       this.beatIndex = 0;
+      this.fallbackElapsedMs = 0;
+      this.startAudioTime = this.audioContext
+        ? this.audioContext.currentTime + 0.04
+        : 0;
       this.isRunning = true;
     }
 
     update(deltaMs) {
       if (!this.isRunning) return;
 
-      this.elapsedMs += deltaMs;
+      const elapsedMs = this.getElapsedMs(deltaMs);
 
-      while (this.elapsedMs >= this.beatIndex * this.beatIntervalMs) {
+      while (elapsedMs >= this.beatIndex * this.beatIntervalMs) {
         this.emitBeat(this.beatIndex);
         this.beatIndex += 1;
       }
@@ -167,40 +164,147 @@
       this.callbacks = [];
     }
 
-    emitBeat(index) {
-      const strong = index % 4 === 0;
-      const color = strong ? 0x35f4ff : index % 2 === 0 ? 0xff2bd6 : 0xfff45b;
+    getElapsedMs(deltaMs) {
+      if (!this.audioContext) {
+        this.fallbackElapsedMs += deltaMs;
+        return this.fallbackElapsedMs;
+      }
 
-      const beat = {
-        index: index,
-        strong: strong,
-        color: color,
-        intensity: strong ? 1.35 : 1,
-      };
+      return Math.max(0, (this.audioContext.currentTime - this.startAudioTime) * 1000);
+    }
+
+    emitBeat(index) {
+      const strong = index % STRONG_BEAT_EVERY === 0;
+      const color = strong ? 0x35f4ff : index % 2 === 0 ? 0xff2bd6 : 0xfff45b;
+      const intensity = strong ? 1.35 : 1;
+      const beat = { index, strong, color, intensity };
 
       this.playBeatSound(beat);
       this.callbacks.forEach((callback) => callback(beat));
+    }
+
+    createAudioContext() {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return null;
+      return new AudioContextClass();
     }
 
     playBeatSound(beat) {
       if (!this.audioContext) return;
 
       const now = this.audioContext.currentTime;
-      const volume = Math.max(getGameVolume(), 0.001);
+      this.playKick(now, beat.strong);
+      this.playHat(now + this.beatIntervalSec * 0.5);
+      this.playMusicLayer(now, beat);
 
+      if (beat.strong || beat.index % 2 === 0) {
+        this.playBass(now, beat.index);
+      }
+    }
+
+    playKick(time, strong) {
       const osc = this.audioContext.createOscillator();
       const gain = this.audioContext.createGain();
 
-      osc.type = beat.strong ? "sine" : "triangle";
-      osc.frequency.setValueAtTime(beat.strong ? 120 : 220, now);
-      osc.frequency.exponentialRampToValueAtTime(beat.strong ? 42 : 110, now + 0.14);
-      gain.gain.setValueAtTime((beat.strong ? 0.2 : 0.08) * volume, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(strong ? 120 : 90, time);
+      osc.frequency.exponentialRampToValueAtTime(42, time + 0.16);
+      const volume = Math.max(getGameVolume(), 0.001);
+      gain.gain.setValueAtTime((strong ? 0.22 : 0.16) * volume, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
 
       osc.connect(gain);
       gain.connect(this.audioContext.destination);
-      osc.start(now);
-      osc.stop(now + 0.18);
+      osc.start(time);
+      osc.stop(time + 0.2);
+    }
+
+    playBass(time, index) {
+      const notes = [55, 65.41, 73.42, 49];
+      const osc = this.audioContext.createOscillator();
+      const filter = this.audioContext.createBiquadFilter();
+      const gain = this.audioContext.createGain();
+
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(notes[index % notes.length], time);
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(420, time);
+      const volume = Math.max(getGameVolume(), 0.001);
+      gain.gain.setValueAtTime(0.055 * volume, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.28);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.audioContext.destination);
+      osc.start(time);
+      osc.stop(time + 0.3);
+    }
+
+    playMusicLayer(time, beat) {
+      if (beat.strong) {
+        this.playChord(time, beat.index);
+      }
+
+      this.playArp(time + this.beatIntervalSec * 0.25, beat.index);
+
+      if (beat.index % 2 === 1) {
+        this.playArp(time + this.beatIntervalSec * 0.75, beat.index + 2);
+      }
+    }
+
+    playChord(time, index) {
+      const chords = [
+        [220, 277.18, 329.63],
+        [196, 246.94, 293.66],
+        [164.81, 207.65, 246.94],
+        [174.61, 220, 261.63],
+      ];
+      const chord = chords[Math.floor(index / STRONG_BEAT_EVERY) % chords.length];
+      const volume = Math.max(getGameVolume(), 0.001);
+
+      chord.forEach((frequency, noteIndex) => {
+        const osc = this.audioContext.createOscillator();
+        const filter = this.audioContext.createBiquadFilter();
+        const gain = this.audioContext.createGain();
+        const startTime = time + noteIndex * 0.018;
+
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(frequency, startTime);
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(980, startTime);
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.035 * volume, startTime + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.62);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.audioContext.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.66);
+      });
+    }
+
+    playArp(time, index) {
+      const notes = [440, 493.88, 554.37, 659.25, 739.99, 659.25, 554.37, 493.88];
+      const osc = this.audioContext.createOscillator();
+      const filter = this.audioContext.createBiquadFilter();
+      const gain = this.audioContext.createGain();
+      const volume = Math.max(getGameVolume(), 0.001);
+
+      osc.type = "square";
+      osc.frequency.setValueAtTime(notes[index % notes.length], time);
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(1600, time);
+      filter.Q.setValueAtTime(5.5, time);
+      gain.gain.setValueAtTime(0.001, time);
+      gain.gain.exponentialRampToValueAtTime(0.028 * volume, time + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.105);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.audioContext.destination);
+      osc.start(time);
+      osc.stop(time + 0.12);
     }
 
     playNotePickupSound() {
@@ -211,20 +315,54 @@
       const notes = [659.25, 880, 1174.66];
 
       notes.forEach((frequency, index) => {
+        const startTime = now + index * 0.035;
         const osc = this.audioContext.createOscillator();
+        const filter = this.audioContext.createBiquadFilter();
         const gain = this.audioContext.createGain();
-        const start = now + index * 0.035;
 
-        osc.type = "square";
-        osc.frequency.setValueAtTime(frequency, start);
-        gain.gain.setValueAtTime(0.06 * volume, start);
-        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.11);
+        osc.type = index === notes.length - 1 ? "triangle" : "square";
+        osc.frequency.setValueAtTime(frequency, startTime);
+        osc.frequency.exponentialRampToValueAtTime(frequency * 1.08, startTime + 0.055);
+        filter.type = "bandpass";
+        filter.frequency.setValueAtTime(1800 + index * 420, startTime);
+        filter.Q.setValueAtTime(4.5, startTime);
+        gain.gain.setValueAtTime(0.001, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.08 * volume, startTime + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.12);
 
-        osc.connect(gain);
+        osc.connect(filter);
+        filter.connect(gain);
         gain.connect(this.audioContext.destination);
-        osc.start(start);
-        osc.stop(start + 0.12);
+        osc.start(startTime);
+        osc.stop(startTime + 0.13);
       });
+    }
+
+    playHat(time) {
+      const bufferSize = Math.floor(this.audioContext.sampleRate * 0.035);
+      const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+      const output = buffer.getChannelData(0);
+
+      for (let i = 0; i < bufferSize; i += 1) {
+        output[i] = Math.random() * 2 - 1;
+      }
+
+      const noise = this.audioContext.createBufferSource();
+      const filter = this.audioContext.createBiquadFilter();
+      const gain = this.audioContext.createGain();
+
+      noise.buffer = buffer;
+      filter.type = "highpass";
+      filter.frequency.setValueAtTime(5200, time);
+      const volume = Math.max(getGameVolume(), 0.001);
+      gain.gain.setValueAtTime(0.035 * volume, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.audioContext.destination);
+      noise.start(time);
+      noise.stop(time + 0.045);
     }
 
     playCrashSound() {
@@ -232,61 +370,123 @@
 
       const now = this.audioContext.currentTime;
       const volume = Math.max(getGameVolume(), 0.001);
+      this.playCrashNoise(now, volume);
+      this.playCrashDrop(now, volume);
+      this.playCrashRing(now + 0.02, volume);
+    }
 
+    playCrashNoise(time, volume) {
+      const bufferSize = Math.floor(this.audioContext.sampleRate * 0.32);
+      const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+      const output = buffer.getChannelData(0);
+
+      for (let i = 0; i < bufferSize; i += 1) {
+        const decay = 1 - i / bufferSize;
+        output[i] = (Math.random() * 2 - 1) * decay;
+      }
+
+      const noise = this.audioContext.createBufferSource();
+      const filter = this.audioContext.createBiquadFilter();
+      const gain = this.audioContext.createGain();
+
+      noise.buffer = buffer;
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(2600, time);
+      filter.frequency.exponentialRampToValueAtTime(360, time + 0.26);
+      gain.gain.setValueAtTime(0.26 * volume, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.audioContext.destination);
+      noise.start(time);
+      noise.stop(time + 0.32);
+    }
+
+    playCrashDrop(time, volume) {
       const osc = this.audioContext.createOscillator();
       const gain = this.audioContext.createGain();
 
       osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(220, now);
-      osc.frequency.exponentialRampToValueAtTime(35, now + 0.35);
-      gain.gain.setValueAtTime(0.25 * volume, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+      osc.frequency.setValueAtTime(190, time);
+      osc.frequency.exponentialRampToValueAtTime(36, time + 0.22);
+      gain.gain.setValueAtTime(0.2 * volume, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
 
       osc.connect(gain);
       gain.connect(this.audioContext.destination);
-      osc.start(now);
-      osc.stop(now + 0.38);
+      osc.start(time);
+      osc.stop(time + 0.26);
+    }
+
+    playCrashRing(time, volume) {
+      const osc = this.audioContext.createOscillator();
+      const gain = this.audioContext.createGain();
+
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(720, time);
+      osc.frequency.exponentialRampToValueAtTime(120, time + 0.16);
+      gain.gain.setValueAtTime(0.11 * volume, time);
+      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+
+      osc.connect(gain);
+      gain.connect(this.audioContext.destination);
+      osc.start(time);
+      osc.stop(time + 0.19);
     }
   }
 
-  const PLAYER_WIDTH = 70;
-  const PLAYER_HEIGHT = 96;
-  const PLAYER_ACCEL = 1450;
-  const PLAYER_DRAG = 1250;
-  const PLAYER_MAX_SPEED = 520;
-  const DRIFT_MAX_SPEED = 650;
+  const MAX_X_SPEED = 360;
+  const DRIFT_MAX_X_SPEED = 520;
+  const NORMAL_ACCEL = 1200;
+  const DRIFT_ACCEL = 760;
+  const NORMAL_DRAG = 1100;
+  const DRIFT_DRAG = 260;
+  const CAR_WIDTH = 42;
+  const CAR_HEIGHT = 60;
+  const MAX_GLOW_SCALE_X = 1.42;
 
   class PlayerCar extends Phaser.GameObjects.Container {
     constructor(scene, x, y) {
       super(scene, x, y);
 
       this.scene = scene;
-      this.minRoadX = 0;
-      this.maxRoadX = scene.scale.width;
       this.driftEnergy = 0;
+      this.lastDriftBeat = -99;
+      this.minRoadX = null;
+      this.maxRoadX = null;
 
-      this.glow = scene.add.rectangle(0, 4, PLAYER_WIDTH + 28, PLAYER_HEIGHT + 34, 0x35f4ff, 0.18);
-      this.glow.setBlendMode(Phaser.BlendModes.ADD);
-
+      this.glow = scene.add.rectangle(0, 2, CAR_WIDTH + 20, CAR_HEIGHT + 22, 0x00eaff, 0);
       this.bodySprite = scene.add.image(0, 0, ASSET_KEYS.player);
-      this.bodySprite.setDisplaySize(PLAYER_WIDTH, PLAYER_HEIGHT);
+      this.bodySprite.setDisplaySize(CAR_WIDTH, CAR_HEIGHT);
+      this.bodyRect = this.bodySprite;
 
       this.add([this.glow, this.bodySprite]);
       scene.add.existing(this);
       scene.physics.add.existing(this);
 
-      this.body.setSize(PLAYER_WIDTH * 0.72, PLAYER_HEIGHT * 0.78);
-      this.body.setOffset(-PLAYER_WIDTH * 0.36, -PLAYER_HEIGHT * 0.39);
-      this.body.setCollideWorldBounds(false);
-      this.body.setDragX(PLAYER_DRAG);
-      this.body.setMaxVelocity(DRIFT_MAX_SPEED, 0);
+      this.body.setSize(CAR_WIDTH, CAR_HEIGHT);
+      this.body.setCollideWorldBounds(true);
+      this.body.setDragX(NORMAL_DRAG);
+      this.body.setMaxVelocity(DRIFT_MAX_X_SPEED, 0);
+
+      this.createDriftParticles();
     }
 
-    setRoadBounds(left, right) {
-      const half = PLAYER_WIDTH * 0.48;
-      this.minRoadX = left + half;
-      this.maxRoadX = right - half;
-      this.constrainToRoad();
+    setRoadBounds(left, right, height) {
+      const maxVisualWidth = (CAR_WIDTH + 20) * MAX_GLOW_SCALE_X;
+      const visualHalfWidth = maxVisualWidth / 2;
+
+      this.minRoadX = left + visualHalfWidth;
+      this.maxRoadX = right - visualHalfWidth;
+      this.body.setBoundsRectangle(
+        new Phaser.Geom.Rectangle(
+          this.minRoadX,
+          0,
+          this.maxRoadX - this.minRoadX + CAR_WIDTH,
+          height
+        )
+      );
     }
 
     update(cursors, keys, deltaMs, touchControl) {
@@ -298,32 +498,50 @@
       let direction = (keyboardRight ? 1 : 0) - (keyboardLeft ? 1 : 0);
       let drifting = keys.shift.isDown && direction !== 0;
 
-      const touchActive = touchControl.active && Number.isFinite(touchControl.targetX);
+      const touchActive =
+        touchControl &&
+        touchControl.active &&
+        Number.isFinite(touchControl.targetX);
 
       if (touchActive) {
-        const targetX = Phaser.Math.Clamp(touchControl.targetX, this.minRoadX, this.maxRoadX);
+        const targetX = Phaser.Math.Clamp(
+          touchControl.targetX,
+          this.minRoadX,
+          this.maxRoadX
+        );
+
         const distance = targetX - this.x;
 
         if (Math.abs(distance) > 8) {
           direction = Math.sign(distance);
 
+          const targetVelocity = Phaser.Math.Clamp(
+            distance * 8,
+            -DRIFT_MAX_X_SPEED,
+            DRIFT_MAX_X_SPEED
+          );
+
           this.body.setVelocityX(
-            Phaser.Math.Linear(this.body.velocity.x, distance * 7.5, 0.18)
+            Phaser.Math.Linear(this.body.velocity.x, targetVelocity, 0.2)
           );
         } else {
           direction = 0;
-          this.body.setVelocityX(Phaser.Math.Linear(this.body.velocity.x, 0, 0.25));
+          this.body.setVelocityX(
+            Phaser.Math.Linear(this.body.velocity.x, 0, 0.25)
+          );
         }
 
-        drifting = Math.abs(distance) > 70;
+        drifting = Math.abs(distance) > 55;
       }
 
-      this.body.setDragX(drifting ? 260 : PLAYER_DRAG);
-      this.body.setMaxVelocity(drifting ? DRIFT_MAX_SPEED : PLAYER_MAX_SPEED, 0);
+      this.body.setDragX(drifting ? DRIFT_DRAG : NORMAL_DRAG);
+      this.body.setMaxVelocity(drifting ? DRIFT_MAX_X_SPEED : MAX_X_SPEED, 0);
 
       if (!touchActive) {
         if (direction !== 0) {
-          this.body.setAccelerationX(direction * PLAYER_ACCEL);
+          this.body.setAccelerationX(
+            direction * (drifting ? DRIFT_ACCEL : NORMAL_ACCEL)
+          );
         } else {
           this.body.setAccelerationX(0);
         }
@@ -332,99 +550,155 @@
       }
 
       this.driftEnergy = Phaser.Math.Clamp(
-        this.driftEnergy + (drifting ? 1.8 : -2.6) * delta,
+        this.driftEnergy + (drifting ? 1 : -1.6) * delta,
         0,
         1
       );
 
-      const speedLean = Phaser.Math.Clamp(this.body.velocity.x / DRIFT_MAX_SPEED, -1, 1);
-
-      this.rotation = Phaser.Math.Linear(
-        this.rotation,
-        speedLean * (drifting ? 0.42 : 0.22),
-        0.18
+      const speedLean = Phaser.Math.Clamp(
+        this.body.velocity.x / DRIFT_MAX_X_SPEED,
+        -1,
+        1
       );
 
-      this.glow.alpha = 0.12 + this.driftEnergy * 0.32;
-      this.glow.scaleX = 1 + this.driftEnergy * 0.25;
+      const targetRotation = speedLean * (drifting ? 0.44 : 0.22);
+      this.rotation = Phaser.Math.Linear(
+        this.rotation,
+        targetRotation,
+        drifting ? 0.16 : 0.22
+      );
 
+      this.glow.alpha = 0.14 + this.driftEnergy * 0.24;
+      this.glow.scaleX = 1 + this.driftEnergy * 0.24;
+
+      this.updateParticles(drifting, speedLean);
       this.constrainToRoad();
 
       return drifting;
     }
 
     constrainToRoad() {
-      const clampedX = Phaser.Math.Clamp(this.x, this.minRoadX, this.maxRoadX);
+      if (this.minRoadX === null || this.maxRoadX === null) return;
 
-      if (clampedX !== this.x) {
-        this.x = clampedX;
-        this.body.velocity.x = 0;
-        this.body.setAccelerationX(0);
-      }
+      const clampedX = Phaser.Math.Clamp(this.x, this.minRoadX, this.maxRoadX);
+      if (clampedX === this.x) return;
+
+      this.x = clampedX;
+      this.body.velocity.x = 0;
+      this.body.setAccelerationX(0);
     }
 
     onBeat(beat) {
       this.scene.tweens.add({
         targets: this.glow,
         alpha: 0.48 * beat.intensity,
-        scaleX: 1.35,
-        scaleY: 1.18,
+        scaleX: 1.42,
+        scaleY: 1.22,
         duration: 70,
         yoyo: true,
         ease: "Sine.easeOut",
       });
     }
 
-    markPerfectDrift() {
+    markPerfectDrift(beatIndex) {
+      this.lastDriftBeat = beatIndex;
       this.scene.tweens.add({
-        targets: this.bodySprite,
-        scaleX: this.bodySprite.scaleX * 1.08,
-        scaleY: this.bodySprite.scaleY * 1.05,
+        targets: this.bodyRect,
+        scaleX: 1.12,
+        scaleY: 1.05,
         duration: 55,
         yoyo: true,
         ease: "Quad.easeOut",
       });
     }
+
+    createDriftParticles() {
+      const spark = this.scene.add.particles(0, 0, "spark", {
+        lifespan: { min: 180, max: 420 },
+        speed: { min: 70, max: 190 },
+        scale: { start: 0.9, end: 0 },
+        alpha: { start: 0.85, end: 0 },
+        tint: [0x35f4ff, 0xff2bd6, 0xfff45b],
+        blendMode: "ADD",
+        emitting: false,
+      });
+
+      spark.startFollow(this, 0, CAR_HEIGHT / 2 - 2);
+      this.sparkEmitter = spark;
+    }
+
+    updateParticles(drifting, speedLean) {
+      this.sparkEmitter.emitting = drifting;
+      this.sparkEmitter.setParticleSpeed(
+        -70 - Math.abs(speedLean) * 80,
+        70 + Math.abs(speedLean) * 160
+      );
+      this.sparkEmitter.setAngle({
+        min: 75 + speedLean * 35,
+        max: 105 + speedLean * 35,
+      });
+      this.sparkEmitter.setFrequency(drifting ? 18 : 80);
+    }
+
+    destroy(fromScene) {
+      this.sparkEmitter?.destroy();
+      super.destroy(fromScene);
+    }
   }
 
   class Obstacle extends Phaser.GameObjects.Image {
-    constructor(scene, x, y, type, speed, beatColor, level) {
-      const texture = type === "truck" ? ASSET_KEYS.npcTruck : ASSET_KEYS.npcCar;
-      super(scene, x, y, texture);
+    constructor(scene, x, y, type, speed, beatColor) {
+      const size = Obstacle.getSize(type);
+      const visual = Obstacle.getVisual(size);
+      super(scene, x, y, visual.texture);
 
       this.type = type;
       this.passed = false;
       this.baseSpeed = speed;
-      this.level = level;
+      this.collisionWidth = size.width;
+      this.collisionHeight = size.height;
+      this.baseRotation = visual.rotation;
 
-      const scale = 1 + level * 0.055;
-
-      if (type === "truck") {
-        this.setDisplaySize(88 * scale, 138 * scale);
-        this.collisionWidth = 70 * scale;
-        this.collisionHeight = 118 * scale;
-      } else {
-        this.setDisplaySize(78 * scale, 108 * scale);
-        this.collisionWidth = 58 * scale;
-        this.collisionHeight = 88 * scale;
-      }
-
+      this.setDisplaySize(visual.width, visual.height);
+      this.setRotation(this.baseRotation);
       scene.add.existing(this);
       scene.physics.add.existing(this);
-
       this.body.setImmovable(true);
       this.body.setVelocityY(speed);
-      this.body.setSize(this.collisionWidth, this.collisionHeight);
+      this.body.setSize(size.width, size.height);
 
-      this.glow = scene.add.rectangle(x, y, this.displayWidth + 22, this.displayHeight + 22, beatColor, 0.16);
+      this.glow = scene.add.rectangle(x, y, visual.width + 18, visual.height + 18, beatColor, 0);
       this.glow.setBlendMode(Phaser.BlendModes.ADD);
+      this.glow.setRotation(this.rotation);
       this.glow.setDepth(1);
       this.setDepth(2);
+    }
+
+    static getSize(type) {
+      if (type === "wall") return { width: 150, height: 50 };
+      if (type === "laser") return { width: 120, height: 30 };
+      return { width: 46, height: 46 };
+    }
+
+    static getVisual(size) {
+      const wide = size.width > size.height * 1.4;
+
+      return {
+        texture: wide ? ASSET_KEYS.npcTruck : ASSET_KEYS.npcCar,
+        width: wide ? size.height : size.width,
+        height: wide ? size.width : size.height,
+        rotation: wide ? Phaser.Math.DegToRad(90) : 0,
+      };
+    }
+
+    setVisualRotation(rotation) {
+      this.setRotation(this.baseRotation + rotation);
     }
 
     preUpdate() {
       if (this.glow?.active) {
         this.glow.setPosition(this.x, this.y);
+        this.glow.setRotation(this.rotation);
       }
     }
 
@@ -438,43 +712,6 @@
       super.destroy(fromScene);
     }
   }
-
-  class NotePickup extends Phaser.GameObjects.Image {
-    constructor(scene, x, y, speed, beatColor) {
-      super(scene, x, y, ASSET_KEYS.note);
-
-      this.setDisplaySize(42, 42);
-      this.setTint(beatColor);
-
-      scene.add.existing(this);
-      scene.physics.add.existing(this);
-
-      this.body.setImmovable(true);
-      this.body.setVelocityY(speed);
-      this.body.setSize(34, 34);
-
-      this.glow = scene.add.rectangle(x, y, 56, 56, beatColor, 0.16);
-      this.glow.setBlendMode(Phaser.BlendModes.ADD);
-      this.glow.setDepth(1);
-      this.setDepth(2);
-    }
-
-    preUpdate() {
-      if (this.glow?.active) {
-        this.glow.setPosition(this.x, this.y);
-      }
-    }
-
-    setScrollSpeed(speed) {
-      this.body.setVelocityY(speed);
-    }
-
-    destroy(fromScene) {
-      this.glow?.destroy();
-      super.destroy(fromScene);
-    }
-  }
-
   class MenuScene extends Phaser.Scene {
     constructor() {
       super("MenuScene");
@@ -490,9 +727,9 @@
       this.createBackground(width, height);
 
       const title = this.add
-        .text(width / 2, height * 0.32, "BASSLINE BURNOUT", {
+        .text(width / 2, height * 0.34, "MUSIC DRIFT", {
           fontFamily: "Arial Black, Arial",
-          fontSize: "56px",
+          fontSize: "64px",
           color: "#35f4ff",
           stroke: "#ff2bd6",
           strokeThickness: 3,
@@ -500,7 +737,7 @@
         .setOrigin(0.5);
 
       this.add
-        .text(width / 2, height * 0.46, "TRAFFIC RHYTHM RUNNER", {
+        .text(width / 2, height * 0.48, "RUNNER PROTOTYPE", {
           fontFamily: "Arial",
           fontSize: "22px",
           color: "#fff45b",
@@ -509,23 +746,15 @@
         .setOrigin(0.5);
 
       const prompt = this.add
-        .text(width / 2, height * 0.66, "Touch to Play", {
+        .text(width / 2, height * 0.68, "Touch to Play", {
           fontFamily: "Arial",
           fontSize: "24px",
           color: "#ffffff",
           backgroundColor: "#111827",
-          padding: { x: 18, y: 10 },
-        })
-        .setOrigin(0.5)
-        .setInteractive({ useHandCursor: true });
-
-      const backButton = this.add
-        .text(width / 2, height * 0.82, "Back to Main Menu", {
-          fontFamily: "Arial",
-          fontSize: "20px",
-          color: "#ffffff",
-          backgroundColor: "#111827",
-          padding: { x: 18, y: 10 },
+          padding: {
+            x: 18,
+            y: 10,
+          },
         })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
@@ -536,10 +765,38 @@
           fontSize: "18px",
           color: "#ffffff",
           backgroundColor: "#111827",
-          padding: { x: 14, y: 8 },
+          padding: {
+            x: 14,
+            y: 8,
+          },
         })
         .setOrigin(1, 1)
         .setDepth(20)
+        .setInteractive({ useHandCursor: true });
+
+      fullscreenButton.on("pointerover", () => {
+        fullscreenButton.setStyle({ color: "#fff45b" });
+      });
+
+      fullscreenButton.on("pointerout", () => {
+        fullscreenButton.setStyle({ color: "#ffffff" });
+      });
+
+      fullscreenButton.on("pointerdown", () => {
+        toggleFullscreen();
+      });
+      const backButton = this.add
+        .text(width / 2, height * 0.82, "Back to Main Menu", {
+          fontFamily: "Arial",
+          fontSize: "20px",
+          color: "#ffffff",
+          backgroundColor: "#111827",
+          padding: {
+            x: 18,
+            y: 10,
+          },
+        })
+        .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
 
       this.tweens.add({
@@ -564,15 +821,31 @@
 
       const startGame = () => {
         if (hasStarted) return;
-
         hasStarted = true;
+
         this.cameras.main.flash(180, 53, 244, 255);
         this.time.delayedCall(120, () => this.scene.start("GameScene"));
       };
 
+      prompt.on("pointerover", () => {
+        prompt.setStyle({ color: "#fff45b" });
+      });
+
+      prompt.on("pointerout", () => {
+        prompt.setStyle({ color: "#ffffff" });
+      });
+
       prompt.on("pointerdown", startGame);
+
       this.input.keyboard.once("keydown-SPACE", startGame);
-      fullscreenButton.on("pointerdown", () => toggleFullscreen());
+
+      backButton.on("pointerover", () => {
+        backButton.setStyle({ color: "#fff45b" });
+      });
+
+      backButton.on("pointerout", () => {
+        backButton.setStyle({ color: "#ffffff" });
+      });
 
       backButton.on("pointerdown", () => {
         this.cameras.main.fadeOut(350, 0, 0, 0);
@@ -593,14 +866,51 @@
     }
   }
 
-  const BASE_ROAD_WIDTH = 560;
-  const MIN_ROAD_WIDTH = 330;
-  const BASE_SCROLL_SPEED = 250;
-  const MAX_SCROLL_SPEED = 720;
-  const LEVEL_DURATION_MS = 15000;
-  const SPAWN_Y = -90;
+  const WORLD_SCROLL_SPEED = 220;
+  const SPEED_GAIN_PER_BEAT = 3.2;
+  const MAX_SCROLL_SPEED = 470;
+  const SPEED_GAIN_PER_SECOND = 16;
+  const ROAD_WIDTH = 560;
+  const SPAWN_Y = -60;
+  const SAFE_ZONE_RADIUS = 92;
   const NOTE_REWARD_SCORE = 250;
-  const LEVEL_COUNT = 6;
+
+  class NotePickup extends Phaser.GameObjects.Image {
+    constructor(scene, x, y, speed, beatColor) {
+      super(scene, x, y, ASSET_KEYS.note);
+
+      this.baseSpeed = speed;
+
+      this.setDisplaySize(30, 30);
+      this.setTint(beatColor);
+      scene.add.existing(this);
+      scene.physics.add.existing(this);
+      this.body.setImmovable(true);
+      this.body.setVelocityY(speed);
+      this.body.setSize(28, 28);
+
+      this.glow = scene.add.rectangle(x, y, 40, 40, beatColor, 0);
+      this.glow.setBlendMode(Phaser.BlendModes.ADD);
+      this.glow.setDepth(1);
+      this.setDepth(2);
+    }
+
+    preUpdate() {
+      if (this.glow?.active) {
+        this.glow.setPosition(this.x, this.y);
+      }
+    }
+
+    setScrollSpeed(speed) {
+      this.baseSpeed = speed;
+      this.body.setVelocityY(speed);
+    }
+
+    destroy(fromScene) {
+      this.glow?.destroy();
+      super.destroy(fromScene);
+    }
+  }
 
   class GameScene extends Phaser.Scene {
     constructor() {
@@ -615,44 +925,30 @@
       this.score = 0;
       this.combo = 0;
       this.bestCombo = 0;
-      this.elapsedMs = 0;
-      this.level = 1;
-      this.scrollSpeed = BASE_SCROLL_SPEED;
-      this.isGameOver = false;
       this.lastBeatWithDrift = -99;
+      this.scrollSpeed = WORLD_SCROLL_SPEED;
+      this.isGameOver = false;
 
+      this.createTextures();
       this.createWorld();
       this.createPlayer();
-      this.createInput();
       this.createUI();
+      this.createInput();
       this.createBeatSystem();
       this.createColliders();
-      this.applyLevelSettings(true);
     }
 
     update(_time, delta) {
       if (this.isGameOver) return;
 
-      this.elapsedMs += delta;
       this.beatManager.update(delta);
-
-      const newLevel = Math.min(
-        LEVEL_COUNT,
-        1 + Math.floor(this.elapsedMs / LEVEL_DURATION_MS)
-      );
-
-      if (newLevel !== this.level) {
-        this.level = newLevel;
-        this.applyLevelSettings(false);
-      }
 
       this.scrollSpeed = Math.min(
         MAX_SCROLL_SPEED,
-        BASE_SCROLL_SPEED + this.level * 55 + this.elapsedMs * 0.012
+        this.scrollSpeed + SPEED_GAIN_PER_SECOND * (delta / 1000)
       );
 
       this.updateBackground(delta);
-      this.updateSpeedLines(delta);
 
       const drifting = this.player.update(
         this.cursors,
@@ -661,97 +957,80 @@
         this.touchControl
       );
 
-      if (drifting) {
-        this.lastBeatWithDrift = this.beatManager.beatIndex;
-      }
+      this.obstacles.getChildren().forEach((obstacle) => {
+        if (!obstacle.active) return;
 
-      this.updateObstacles();
-      this.updateNotes();
+        obstacle.setScrollSpeed(this.scrollSpeed);
+        obstacle.preUpdate();
 
-      this.score += Math.floor(delta * 0.025 * this.level);
+        if (!obstacle.passed && obstacle.y > this.player.y + 40) {
+          obstacle.passed = true;
+          this.combo += 1;
+          this.bestCombo = Math.max(this.bestCombo, this.combo);
+          this.score += 100 + this.combo * 8;
+          this.pulseUI(0x35f4ff);
+        }
+
+        if (obstacle.y > this.scale.height + 100) {
+          obstacle.destroy();
+        }
+      });
+
+      this.notes.getChildren().forEach((note) => {
+        if (!note.active) return;
+
+        note.setScrollSpeed(this.scrollSpeed);
+        note.preUpdate();
+
+        if (note.y > this.scale.height + 100) {
+          note.destroy();
+        }
+      });
+
+      this.score += Math.floor(delta * 0.02);
       this.updateUI();
+    }
+
+    createTextures() {
+      const spark = this.add.graphics();
+      spark.fillStyle(0xffffff, 1);
+      spark.fillCircle(5, 5, 5);
+      spark.generateTexture("spark", 10, 10);
+      spark.destroy();
     }
 
     createWorld() {
       const { width, height } = this.scale;
-
-      this.background = this.add.tileSprite(
-        width / 2,
-        height / 2,
-        width,
-        height,
-        ASSET_KEYS.background
-      );
-
-      this.configureBackground();
-
       this.roadX = width / 2;
-      this.roadWidth = BASE_ROAD_WIDTH;
-      this.roadLeft = this.roadX - this.roadWidth / 2;
-      this.roadRight = this.roadX + this.roadWidth / 2;
+      this.roadLeft = this.roadX - ROAD_WIDTH / 2;
+      this.roadRight = this.roadX + ROAD_WIDTH / 2;
 
-      this.roadFill = this.add.rectangle(this.roadX, height / 2, this.roadWidth, height, 0x050611, 0.32);
-      this.roadFill.setDepth(0.5);
-
-      this.edgeGlowLeft = this.add.rectangle(this.roadLeft, height / 2, 10, height, 0xff2bd6, 0.55);
-      this.edgeGlowRight = this.add.rectangle(this.roadRight, height / 2, 10, height, 0x35f4ff, 0.55);
-
-      this.edgeGlowLeft.setBlendMode(Phaser.BlendModes.ADD);
-      this.edgeGlowRight.setBlendMode(Phaser.BlendModes.ADD);
-      this.edgeGlowLeft.setDepth(1);
-      this.edgeGlowRight.setDepth(1);
-
+      this.background = this.add.tileSprite(width / 2, height / 2, width, height, ASSET_KEYS.background);
+      this.backgroundTileScale = 1;
       this.beatFlash = this.add.rectangle(width / 2, height / 2, width, height, 0x35f4ff, 0);
       this.beatFlash.setBlendMode(Phaser.BlendModes.ADD);
-      this.beatFlash.setDepth(8);
 
-      this.laneLines = [];
-      this.speedLines = [];
+      this.edgeGlowLeft = this.add.rectangle(this.roadLeft, height / 2, 10, height, 0xff2bd6, 0.45);
+      this.edgeGlowRight = this.add.rectangle(this.roadRight, height / 2, 10, height, 0x35f4ff, 0.45);
+      this.edgeGlowLeft.setBlendMode(Phaser.BlendModes.ADD);
+      this.edgeGlowRight.setBlendMode(Phaser.BlendModes.ADD);
 
-      for (let i = 0; i < 4; i += 1) {
-        const line = this.add.rectangle(width / 2, 0, 4, 80, 0xffffff, 0.28);
-        line.setDepth(1.5);
-        this.laneLines.push(line);
-      }
+      this.gridOffset = 0;
+      this.spectrumBars = Array.from({ length: 28 }, (_, index) => {
+        const x = 42 + index * 32;
+        return this.add.rectangle(x, height - 16, 14, 26, index % 2 ? 0xff2bd6 : 0x35f4ff, 0.34);
+      });
 
-      for (let i = 0; i < 34; i += 1) {
-        const x = Phaser.Math.Between(20, width - 20);
-        const y = Phaser.Math.Between(0, height);
-
-        const line = this.add.rectangle(
-          x,
-          y,
-          3,
-          Phaser.Math.Between(24, 70),
-          0x35f4ff,
-          0.2
-        );
-
-        line.setDepth(1.2);
-        this.speedLines.push(line);
-      }
-    }
-
-    configureBackground() {
-      const { width, height } = this.scale;
-      const source = this.textures.get(ASSET_KEYS.background).getSourceImage();
-      const scale = Math.max(width / source.width, height / source.height);
-
-      this.background.setSize(width, height);
-      this.background.setPosition(width / 2, height / 2);
-      this.background.setTileScale(scale, scale);
-      this.backgroundTileScale = scale;
+      this.configureBackground();
     }
 
     createPlayer() {
       this.player = new PlayerCar(this, this.scale.width / 2, this.scale.height - 105);
-      this.player.setRoadBounds(this.roadLeft, this.roadRight);
-      this.player.setDepth(5);
+      this.player.setRoadBounds(this.roadLeft, this.roadRight, this.scale.height);
     }
 
     createInput() {
       this.cursors = this.input.keyboard.createCursorKeys();
-
       this.keys = this.input.keyboard.addKeys({
         left: Phaser.Input.Keyboard.KeyCodes.A,
         right: Phaser.Input.Keyboard.KeyCodes.D,
@@ -765,15 +1044,18 @@
 
       const updateTouchTarget = (pointer) => {
         this.touchControl.active = true;
-        this.touchControl.targetX = Phaser.Math.Clamp(pointer.x, this.roadLeft, this.roadRight);
+        this.touchControl.targetX = Phaser.Math.Clamp(
+          pointer.x,
+          this.roadLeft,
+          this.roadRight
+        );
       };
 
       this.input.on("pointerdown", updateTouchTarget);
 
       this.input.on("pointermove", (pointer) => {
-        if (pointer.isDown) {
-          updateTouchTarget(pointer);
-        }
+        if (!pointer.isDown) return;
+        updateTouchTarget(pointer);
       });
 
       this.input.on("pointerup", () => {
@@ -786,30 +1068,19 @@
     }
 
     createUI() {
-      this.uiText = this.add.text(54, 18, "", {
+      this.uiText = this.add.text(54, 20, "", {
         fontFamily: "Arial",
         fontSize: "20px",
         color: "#ffffff",
         lineSpacing: 8,
       });
+      this.uiText.setDepth(10);
 
-      this.uiText.setDepth(20);
-
-      this.levelText = this.add.text(this.scale.width / 2, 36, "", {
-        fontFamily: "Arial Black, Arial",
-        fontSize: "24px",
-        color: "#fff45b",
-        stroke: "#000000",
-        strokeThickness: 3,
-      });
-
-      this.levelText.setOrigin(0.5);
-      this.levelText.setDepth(20);
-
-      this.beatDot = this.add.image(30, 112, ASSET_KEYS.rhythm);
-      this.beatDot.setDisplaySize(28, 28);
-      this.beatDot.setDepth(20);
-
+      this.beatDot = this.add.image(30, 108, ASSET_KEYS.rhythm);
+      this.beatDot.setDisplaySize(24, 24);
+      this.beatDotBaseScaleX = this.beatDot.scaleX;
+      this.beatDotBaseScaleY = this.beatDot.scaleY;
+      this.beatDot.setDepth(10);
       this.updateUI();
     }
 
@@ -822,236 +1093,71 @@
     createColliders() {
       this.obstacles = this.physics.add.group({ runChildUpdate: false });
       this.notes = this.physics.add.group({ runChildUpdate: false });
-
       this.physics.add.overlap(this.player, this.obstacles, () => this.handleCrash());
       this.physics.add.overlap(this.player, this.notes, (_player, note) => this.collectNote(note));
     }
 
-    applyLevelSettings(firstTime) {
-      const { height } = this.scale;
-
-      this.roadWidth = Math.max(MIN_ROAD_WIDTH, BASE_ROAD_WIDTH - (this.level - 1) * 46);
-      this.roadLeft = this.roadX - this.roadWidth / 2;
-      this.roadRight = this.roadX + this.roadWidth / 2;
-
-      this.roadFill.setDisplaySize(this.roadWidth, height);
-      this.roadFill.setPosition(this.roadX, height / 2);
-
-      this.edgeGlowLeft.setPosition(this.roadLeft, height / 2);
-      this.edgeGlowRight.setPosition(this.roadRight, height / 2);
-
-      this.player?.setRoadBounds(this.roadLeft, this.roadRight);
-      this.updateLaneLines();
-
-      this.levelText.setText(`LEVEL ${this.level}`);
-
-      if (!firstTime) {
-        this.cameras.main.flash(220, 255, 244, 91);
-        this.cameras.main.shake(140, 0.006);
-
-        this.tweens.add({
-          targets: this.levelText,
-          scale: 1.42,
-          duration: 140,
-          yoyo: true,
-          ease: "Back.easeOut",
-        });
-      }
-    }
-
-    updateLaneLines() {
-      const laneCount = 5;
-      const laneWidth = this.roadWidth / laneCount;
-
-      this.laneLines.forEach((line, index) => {
-        line.x = this.roadLeft + laneWidth * (index + 1);
-        line.y = 0;
-      });
-    }
-
-    updateBackground(delta) {
-      this.background.tilePositionY -=
-        (this.scrollSpeed * delta * 0.001) / this.backgroundTileScale;
-    }
-
-    updateSpeedLines(delta) {
-      const { height } = this.scale;
-      const movement = this.scrollSpeed * delta * 0.001;
-      const laneCount = 5;
-      const laneWidth = this.roadWidth / laneCount;
-
-      this.laneLines.forEach((line, index) => {
-        line.y += movement * 1.35;
-        line.x = this.roadLeft + laneWidth * (index + 1);
-
-        if (line.y > height + 80) {
-          line.y = -80;
-        }
-      });
-
-      this.speedLines.forEach((line) => {
-        line.y += movement * (1.6 + this.level * 0.2);
-        line.alpha = 0.08 + this.level * 0.045;
-
-        if (line.y > height + 80) {
-          line.y = Phaser.Math.Between(-140, -20);
-          line.x = Phaser.Math.Between(this.roadLeft + 10, this.roadRight - 10);
-        }
-      });
-    }
-
     onBeat(beat) {
-      const blockedLanes = this.spawnObstaclePattern(beat);
-
-      this.spawnNote(beat, blockedLanes);
+      const blockedLane = this.spawnObstacle(beat);
+      this.spawnNote(beat, blockedLane);
       this.pulseWorld(beat);
       this.player.onBeat(beat);
 
       const driftWasOnBeat = this.lastBeatWithDrift >= this.beatManager.beatIndex - 1;
-
       if (driftWasOnBeat) {
         this.combo += 1;
-        this.bestCombo = Math.max(this.bestCombo, this.combo);
         this.score += beat.strong ? 160 : 90;
-        this.player.markPerfectDrift();
+        this.player.markPerfectDrift(beat.index);
         this.pulseUI(0xfff45b);
       }
     }
 
-    spawnObstaclePattern(beat) {
-      const blockedLanes = [];
-      const spawnChance = Math.min(0.96, 0.58 + this.level * 0.075);
-
-      if (Math.random() > spawnChance) {
-        return blockedLanes;
-      }
-
-      const count =
-        this.level >= 5 && beat.strong
-          ? 3
-          : this.level >= 3 && beat.index % 3 === 0
-            ? 2
-            : 1;
-
+    spawnObstacle(beat) {
+      const types = ["block", "block", "wall", "laser"];
+      const type = Phaser.Utils.Array.GetRandom(types);
       const laneCount = 5;
-      const playerLane = this.getLaneFromX(this.player.x);
-
-      for (let i = 0; i < count; i += 1) {
-        let lane;
-
-        if (this.level >= 3 && Math.random() < 0.5 && i === 0) {
-          lane = Phaser.Math.Clamp(playerLane + Phaser.Math.Between(-1, 1), 0, laneCount - 1);
-        } else {
-          lane = Phaser.Math.Between(0, laneCount - 1);
-        }
-
-        let guard = 0;
-
-        while (blockedLanes.includes(lane) && guard < 8) {
-          lane = Phaser.Math.Between(0, laneCount - 1);
-          guard += 1;
-        }
-
-        blockedLanes.push(lane);
-        this.spawnObstacle(beat, lane);
-      }
-
-      return blockedLanes;
-    }
-
-    spawnObstacle(beat, lane) {
-      const laneCount = 5;
-      const laneWidth = this.roadWidth / laneCount;
+      const laneWidth = ROAD_WIDTH / laneCount;
+      const lane = Phaser.Math.Between(0, laneCount - 1);
       const x = this.roadLeft + laneWidth * lane + laneWidth / 2;
-      const type = this.level >= 2 && Math.random() < 0.34 ? "truck" : "car";
 
-      const obstacle = new Obstacle(
-        this,
-        x,
-        SPAWN_Y,
-        type,
-        this.scrollSpeed,
-        beat.color,
-        this.level
-      );
+      if (Math.abs(x - this.player.x) < SAFE_ZONE_RADIUS && beat.strong) {
+        return null;
+      }
 
+      const obstacle = new Obstacle(this, x, SPAWN_Y, type, this.scrollSpeed, beat.color);
       this.obstacles.add(obstacle);
       obstacle.setScrollSpeed(this.scrollSpeed);
+
+      if (type === "laser") {
+        obstacle.setVisualRotation(Phaser.Math.DegToRad(Phaser.Math.Between(-12, 12)));
+        obstacle.body.setSize(obstacle.collisionWidth, obstacle.collisionHeight);
+      }
+
+      return lane;
     }
 
-    spawnNote(beat, blockedLanes) {
+    spawnNote(beat, blockedLane) {
       if (beat.index % 2 !== 1) return;
 
       const laneCount = 5;
-      const laneWidth = this.roadWidth / laneCount;
-      const openLanes = [];
+      const laneWidth = ROAD_WIDTH / laneCount;
+      let lane = Phaser.Math.Between(0, laneCount - 1);
 
-      for (let i = 0; i < laneCount; i += 1) {
-        if (!blockedLanes.includes(i)) {
-          openLanes.push(i);
-        }
+      if (lane === blockedLane) {
+        lane = (lane + Phaser.Math.Between(1, laneCount - 1)) % laneCount;
       }
 
-      if (openLanes.length === 0) return;
-
-      const lane = Phaser.Utils.Array.GetRandom(openLanes);
       const x = this.roadLeft + laneWidth * lane + laneWidth / 2;
-
-      const note = new NotePickup(this, x, SPAWN_Y - 45, this.scrollSpeed, beat.color);
+      const note = new NotePickup(this, x, SPAWN_Y - 34, this.scrollSpeed, beat.color);
 
       this.notes.add(note);
       note.setScrollSpeed(this.scrollSpeed);
     }
 
-    getLaneFromX(x) {
-      const laneCount = 5;
-      const laneWidth = this.roadWidth / laneCount;
-
-      return Phaser.Math.Clamp(
-        Math.floor((x - this.roadLeft) / laneWidth),
-        0,
-        laneCount - 1
-      );
-    }
-
-    updateObstacles() {
-      this.obstacles.getChildren().forEach((obstacle) => {
-        if (!obstacle.active) return;
-
-        obstacle.setScrollSpeed(this.scrollSpeed);
-        obstacle.preUpdate();
-
-        if (!obstacle.passed && obstacle.y > this.player.y + 60) {
-          obstacle.passed = true;
-          this.combo += 1;
-          this.bestCombo = Math.max(this.bestCombo, this.combo);
-          this.score += 100 + this.combo * 8 + this.level * 18;
-          this.pulseUI(0x35f4ff);
-        }
-
-        if (obstacle.y > this.scale.height + 130) {
-          obstacle.destroy();
-        }
-      });
-    }
-
-    updateNotes() {
-      this.notes.getChildren().forEach((note) => {
-        if (!note.active) return;
-
-        note.setScrollSpeed(this.scrollSpeed);
-        note.preUpdate();
-
-        if (note.y > this.scale.height + 100) {
-          note.destroy();
-        }
-      });
-    }
-
     collectNote(note) {
       if (!note?.active) return;
 
-      this.score += NOTE_REWARD_SCORE + this.level * 30;
+      this.score += NOTE_REWARD_SCORE;
       this.beatManager.playNotePickupSound();
       this.pulseUI(0xfff45b);
       note.destroy();
@@ -1059,8 +1165,6 @@
 
     pulseWorld(beat) {
       this.beatFlash.setFillStyle(beat.color, beat.strong ? 0.22 : 0.13);
-      this.beatFlash.alpha = beat.strong ? 0.22 : 0.13;
-
       this.tweens.add({
         targets: this.beatFlash,
         alpha: 0,
@@ -1070,11 +1174,23 @@
 
       this.tweens.add({
         targets: [this.edgeGlowLeft, this.edgeGlowRight],
-        scaleX: beat.strong ? 2.5 : 1.8,
-        alpha: beat.strong ? 0.8 : 0.58,
+        scaleX: beat.strong ? 2.4 : 1.7,
+        alpha: beat.strong ? 0.78 : 0.58,
         duration: 80,
         yoyo: true,
         ease: "Quad.easeOut",
+      });
+
+      this.spectrumBars.forEach((bar, index) => {
+        const height = Phaser.Math.Between(16, beat.strong ? 110 : 72);
+        this.tweens.add({
+          targets: bar,
+          height,
+          alpha: 0.22 + (index % 3) * 0.14,
+          duration: 80,
+          yoyo: true,
+          ease: "Sine.easeOut",
+        });
       });
 
       this.pulseUI(beat.color);
@@ -1083,9 +1199,8 @@
     pulseUI(color) {
       this.beatDot.setTint(color);
       this.tweens.killTweensOf([this.uiText, this.beatDot]);
-
       this.uiText.setScale(1);
-      this.beatDot.setScale(1);
+      this.beatDot.setScale(this.beatDotBaseScaleX, this.beatDotBaseScaleY);
 
       this.tweens.add({
         targets: this.uiText,
@@ -1097,19 +1212,32 @@
 
       this.tweens.add({
         targets: this.beatDot,
-        scale: 1.18,
+        scaleX: this.beatDotBaseScaleX * 1.08,
+        scaleY: this.beatDotBaseScaleY * 1.08,
         duration: 70,
         yoyo: true,
         ease: "Quad.easeOut",
       });
     }
 
-    updateUI() {
-      this.uiText.setText(
-        `Score ${this.score}\nCombo ${this.combo}\nLevel ${this.level}\nSpeed ${Math.floor(this.scrollSpeed)}`
-      );
+    updateBackground(delta) {
+      this.gridOffset = (this.gridOffset + this.scrollSpeed * delta * 0.001) % 48;
+      this.background.tilePositionY -= (this.scrollSpeed * delta * 0.001) / this.backgroundTileScale;
+    }
 
-      this.levelText.setText(`LEVEL ${this.level}`);
+    configureBackground() {
+      const { width, height } = this.scale;
+      const source = this.textures.get(ASSET_KEYS.background).getSourceImage();
+      const scale = Math.max(width / source.width, height / source.height);
+
+      this.background.setSize(width, height);
+      this.background.setPosition(width / 2, height / 2);
+      this.background.setTileScale(scale, scale);
+      this.backgroundTileScale = scale;
+    }
+
+    updateUI() {
+      this.uiText.setText(`Score ${this.score}\nCombo ${this.combo}\nBPM ${BPM}`);
     }
 
     handleCrash() {
@@ -1117,10 +1245,8 @@
 
       this.isGameOver = true;
       this.combo = 0;
-
       this.beatManager.playCrashSound();
       this.beatManager.stop();
-
       this.physics.pause();
       this.cameras.main.shake(260, 0.018);
       this.cameras.main.flash(180, 255, 43, 109);
@@ -1182,7 +1308,9 @@
         .setOrigin(0.5);
 
       const leaderboardText = leaderboard
-        .map((entry, index) => `${index + 1}. ${entry.name} - ${entry.score}`)
+        .map((entry, index) => {
+          return `${index + 1}. ${entry.name} - ${entry.score}`;
+        })
         .join("\n");
 
       this.add
@@ -1201,7 +1329,10 @@
           fontSize: "24px",
           color: "#ffffff",
           backgroundColor: "#111827",
-          padding: { x: 18, y: 10 },
+          padding: {
+            x: 18,
+            y: 10,
+          },
         })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
@@ -1221,19 +1352,38 @@
         this.time.delayedCall(100, () => this.scene.start("GameScene"));
       };
 
+      retry.on("pointerover", () => {
+        retry.setStyle({ color: "#fff45b" });
+      });
+
+      retry.on("pointerout", () => {
+        retry.setStyle({ color: "#ffffff" });
+      });
+
       retry.on("pointerdown", restartGame);
+
       this.input.keyboard.once("keydown-SPACE", restartGame);
 
       const backButton = this.add
         .text(width / 2, height * 0.88, "Back to Main Menu", {
           fontFamily: "Arial",
           fontSize: "22px",
-          color: "#ffffff",
           backgroundColor: "#111827",
-          padding: { x: 18, y: 10 },
+          padding: {
+            x: 18,
+            y: 10,
+          },
         })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
+
+      backButton.on("pointerover", () => {
+        backButton.setStyle({ color: "#fff45b" });
+      });
+
+      backButton.on("pointerout", () => {
+        backButton.setStyle({ color: "#ffffff" });
+      });
 
       backButton.on("pointerdown", () => {
         this.cameras.main.fadeOut(350, 0, 0, 0);
