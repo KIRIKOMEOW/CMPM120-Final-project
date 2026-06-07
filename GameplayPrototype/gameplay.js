@@ -5,7 +5,7 @@
     throw new Error("Phaser 4 engine was not loaded from ./lib/phaser.js");
   }
 
-  const BPM = 120;
+  const BPM = 150;
   const STRONG_BEAT_EVERY = 4;
   const VOLUME_KEY = "basslineBurnoutVolume";
   const DEFAULT_VOLUME = 0.3;
@@ -465,7 +465,14 @@
       scene.add.existing(this);
       scene.physics.add.existing(this);
 
-      this.body.setSize(CAR_WIDTH, CAR_HEIGHT);
+      const playerHitboxWidth = CAR_WIDTH * 0.7;
+      const playerHitboxHeight = CAR_HEIGHT * 0.8;
+
+      this.body.setSize(playerHitboxWidth, playerHitboxHeight);
+      this.body.setOffset(
+        -playerHitboxWidth / 2,
+        -playerHitboxHeight / 2
+      );
       this.body.setCollideWorldBounds(true);
       this.body.setDragX(NORMAL_DRAG);
       this.body.setMaxVelocity(DRIFT_MAX_X_SPEED, 0);
@@ -648,57 +655,90 @@
 
   class Obstacle extends Phaser.GameObjects.Image {
     constructor(scene, x, y, type, speed, beatColor) {
-      const size = Obstacle.getSize(type);
-      const visual = Obstacle.getVisual(size);
+      const visual = Obstacle.getVisual(type);
       super(scene, x, y, visual.texture);
 
       this.type = type;
       this.passed = false;
       this.baseSpeed = speed;
-      this.collisionWidth = size.width;
-      this.collisionHeight = size.height;
-      this.baseRotation = visual.rotation;
+      this.collisionWidth = visual.collisionWidth;
+      this.collisionHeight = visual.collisionHeight;
 
       this.setDisplaySize(visual.width, visual.height);
-      this.setRotation(this.baseRotation);
+
       scene.add.existing(this);
       scene.physics.add.existing(this);
-      this.body.setImmovable(true);
-      this.body.setVelocityY(speed);
-      this.body.setSize(size.width, size.height);
 
-      this.glow = scene.add.rectangle(x, y, visual.width + 18, visual.height + 18, beatColor, 0);
+      this.body.setImmovable(true);
+      this.body.setAllowGravity(false);
+      this.body.setVelocityY(speed);
+
+      const scaledBodyWidth = visual.collisionWidth / this.scaleX;
+      const scaledBodyHeight = visual.collisionHeight / this.scaleY;
+
+      this.body.setSize(scaledBodyWidth, scaledBodyHeight);
+      this.body.setOffset(
+        (this.width - scaledBodyWidth) / 2,
+        (this.height - scaledBodyHeight) / 2
+      );
+
+      this.glow = scene.add.rectangle(
+        x,
+        y,
+        visual.width + 18,
+        visual.height + 18,
+        beatColor,
+        0
+      );
+
       this.glow.setBlendMode(Phaser.BlendModes.ADD);
-      this.glow.setRotation(this.rotation);
       this.glow.setDepth(1);
       this.setDepth(2);
     }
 
-    static getSize(type) {
-      if (type === "wall") return { width: 150, height: 50 };
-      if (type === "laser") return { width: 120, height: 30 };
-      return { width: 46, height: 46 };
-    }
+    static getVisual(type) {
+      if (type === "sideTruck") {
+        return {
+          texture: ASSET_KEYS.npcTruck,
+          width: 130,
+          height: 64,
+          collisionWidth: 108,
+          collisionHeight: 38,
+        };
+      }
 
-    static getVisual(size) {
-      const wide = size.width > size.height * 1.4;
+      if (type === "wall") {
+        return {
+          texture: ASSET_KEYS.npcTruck,
+          width: 72,
+          height: 130,
+          collisionWidth: 38,
+          collisionHeight: 108,
+        };
+      }
+
+      if (type === "laser") {
+        return {
+          texture: ASSET_KEYS.npcTruck,
+          width: 66,
+          height: 120,
+          collisionWidth: 36,
+          collisionHeight: 98,
+        };
+      }
 
       return {
-        texture: wide ? ASSET_KEYS.npcTruck : ASSET_KEYS.npcCar,
-        width: wide ? size.height : size.width,
-        height: wide ? size.width : size.height,
-        rotation: wide ? Phaser.Math.DegToRad(90) : 0,
+        texture: ASSET_KEYS.npcCar,
+        width: 52,
+        height: 72,
+        collisionWidth: 34,
+        collisionHeight: 56,
       };
-    }
-
-    setVisualRotation(rotation) {
-      this.setRotation(this.baseRotation + rotation);
     }
 
     preUpdate() {
       if (this.glow?.active) {
         this.glow.setPosition(this.x, this.y);
-        this.glow.setRotation(this.rotation);
       }
     }
 
@@ -867,13 +907,83 @@
   }
 
   const WORLD_SCROLL_SPEED = 220;
-  const SPEED_GAIN_PER_BEAT = 3.2;
-  const MAX_SCROLL_SPEED = 470;
-  const SPEED_GAIN_PER_SECOND = 16;
   const ROAD_WIDTH = 560;
   const SPAWN_Y = -60;
   const SAFE_ZONE_RADIUS = 92;
   const NOTE_REWARD_SCORE = 250;
+
+  const LEVELS = [
+    {
+      name: "LEVEL 1",
+      title: "OPEN ROAD",
+      goal: "Survive the warm-up traffic.",
+      durationMs: 15000,
+      roadWidth: 560,
+      startSpeed: 260,
+      maxSpeed: 470,
+      speedGain: 18,
+      spawnEveryBeats: 3,
+      spawnChance: 0.55,
+      truckChance: 0,
+      pressureChance: 0,
+    },
+    {
+      name: "LEVEL 2",
+      title: "TRUCK TRAFFIC",
+      goal: "Large vehicles join the road.",
+      durationMs: 18000,
+      roadWidth: 520,
+      startSpeed: 320,
+      maxSpeed: 560,
+      speedGain: 26,
+      spawnEveryBeats: 2,
+      spawnChance: 0.68,
+      truckChance: 0.28,
+      pressureChance: 0.1,
+    },
+    {
+      name: "LEVEL 3",
+      title: "LANE PRESSURE",
+      goal: "Traffic starts aiming near your lane.",
+      durationMs: 20000,
+      roadWidth: 480,
+      startSpeed: 380,
+      maxSpeed: 650,
+      speedGain: 34,
+      spawnEveryBeats: 2,
+      spawnChance: 0.78,
+      truckChance: 0.36,
+      pressureChance: 0.45,
+    },
+    {
+      name: "LEVEL 4",
+      title: "NARROW RUN",
+      goal: "The road gets tighter.",
+      durationMs: 22000,
+      roadWidth: 430,
+      startSpeed: 440,
+      maxSpeed: 740,
+      speedGain: 42,
+      spawnEveryBeats: 2,
+      spawnChance: 0.86,
+      truckChance: 0.45,
+      pressureChance: 0.55,
+    },
+    {
+      name: "LEVEL 5",
+      title: "BURNOUT RUSH",
+      goal: "Final traffic wave.",
+      durationMs: 24000,
+      roadWidth: 390,
+      startSpeed: 500,
+      maxSpeed: 850,
+      speedGain: 52,
+      spawnEveryBeats: 1,
+      spawnChance: 0.88,
+      truckChance: 0.5,
+      pressureChance: 0.68,
+    },
+  ];
 
   class NotePickup extends Phaser.GameObjects.Image {
     constructor(scene, x, y, speed, beatColor) {
@@ -926,8 +1036,15 @@
       this.combo = 0;
       this.bestCombo = 0;
       this.lastBeatWithDrift = -99;
-      this.scrollSpeed = WORLD_SCROLL_SPEED;
       this.isGameOver = false;
+      this.waitingForNextLevel = false;
+
+      this.levelIndex = 0;
+      this.level = 1;
+      this.currentLevel = LEVELS[this.levelIndex];
+      this.currentRoadWidth = this.currentLevel.roadWidth;
+      this.levelTimeLeftMs = this.currentLevel.durationMs;
+      this.scrollSpeed = this.currentLevel.startSpeed;
 
       this.createTextures();
       this.createWorld();
@@ -936,16 +1053,25 @@
       this.createInput();
       this.createBeatSystem();
       this.createColliders();
+
+      this.applyLevelDesign(true);
     }
 
     update(_time, delta) {
-      if (this.isGameOver) return;
+      if (this.isGameOver || this.waitingForNextLevel) return;
+
+      this.levelTimeLeftMs -= delta;
+
+      if (this.levelTimeLeftMs <= 0) {
+        this.completeLevel();
+        return;
+      }
 
       this.beatManager.update(delta);
 
       this.scrollSpeed = Math.min(
-        MAX_SCROLL_SPEED,
-        this.scrollSpeed + SPEED_GAIN_PER_SECOND * (delta / 1000)
+        this.currentLevel.maxSpeed,
+        this.scrollSpeed + this.currentLevel.speedGain * (delta / 1000)
       );
 
       this.updateBackground(delta);
@@ -1002,8 +1128,8 @@
     createWorld() {
       const { width, height } = this.scale;
       this.roadX = width / 2;
-      this.roadLeft = this.roadX - ROAD_WIDTH / 2;
-      this.roadRight = this.roadX + ROAD_WIDTH / 2;
+      this.roadLeft = this.roadX - this.currentRoadWidth / 2;
+      this.roadRight = this.roadX + this.currentRoadWidth / 2;
 
       this.background = this.add.tileSprite(width / 2, height / 2, width, height, ASSET_KEYS.background);
       this.backgroundTileScale = 1;
@@ -1096,6 +1222,201 @@
       this.physics.add.overlap(this.player, this.obstacles, () => this.handleCrash());
       this.physics.add.overlap(this.player, this.notes, (_player, note) => this.collectNote(note));
     }
+    completeLevel() {
+      if (this.waitingForNextLevel) return;
+
+      this.waitingForNextLevel = true;
+      this.beatManager.stop();
+      this.physics.pause();
+      this.clearTrafficForLevelStart();
+
+      if (this.levelIndex >= LEVELS.length - 1) {
+        this.showFinalClearPanel();
+      } else {
+        this.showNextLevelPanel();
+      }
+    }
+
+    clearTrafficForLevelStart() {
+      this.obstacles.getChildren().forEach((obstacle) => {
+        obstacle.destroy();
+      });
+
+      this.notes.getChildren().forEach((note) => {
+        note.destroy();
+      });
+    }
+
+    showNextLevelPanel() {
+      const { width, height } = this.scale;
+      const nextLevel = LEVELS[this.levelIndex + 1];
+
+      this.nextLevelPanel = this.add.container(width / 2, height / 2);
+      this.nextLevelPanel.setDepth(1000);
+
+      const panel = this.add.rectangle(0, 0, 560, 320, 0x050611, 0.92);
+      panel.setStrokeStyle(4, 0xfff45b);
+
+      const title = this.add.text(0, -105, `${this.currentLevel.name} CLEAR`, {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "38px",
+        color: "#fff45b",
+        stroke: "#000000",
+        strokeThickness: 5,
+        align: "center",
+      });
+      title.setOrigin(0.5);
+
+      const info = this.add.text(
+        0,
+        -35,
+        `Next: ${nextLevel.name}\n${nextLevel.title}\n${nextLevel.goal}`,
+        {
+          fontFamily: "Arial",
+          fontSize: "22px",
+          color: "#ffffff",
+          align: "center",
+          lineSpacing: 8,
+        }
+      );
+      info.setOrigin(0.5);
+
+      const button = this.add.text(0, 95, `NEXT ${nextLevel.name}`, {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "24px",
+        color: "#050611",
+        backgroundColor: "#fff45b",
+        padding: {
+          x: 24,
+          y: 12,
+        },
+      });
+      button.setOrigin(0.5);
+      button.setInteractive({ useHandCursor: true });
+
+      button.on("pointerover", () => {
+        button.setStyle({ color: "#ff2bd6" });
+      });
+
+      button.on("pointerout", () => {
+        button.setStyle({ color: "#050611" });
+      });
+
+      button.on("pointerdown", () => {
+        this.startNextLevel();
+      });
+
+      this.nextLevelPanel.add([panel, title, info, button]);
+
+      this.cameras.main.flash(220, 255, 244, 91);
+    }
+
+    startNextLevel() {
+      if (this.nextLevelPanel) {
+        this.nextLevelPanel.destroy();
+      }
+
+      this.levelIndex += 1;
+      this.level = this.levelIndex + 1;
+      this.currentLevel = LEVELS[this.levelIndex];
+      this.currentRoadWidth = this.currentLevel.roadWidth;
+      this.levelTimeLeftMs = this.currentLevel.durationMs;
+      this.scrollSpeed = this.currentLevel.startSpeed;
+      this.waitingForNextLevel = false;
+
+      this.applyLevelDesign(false);
+
+      this.player.setPosition(this.scale.width / 2, this.scale.height - 105);
+      this.player.body.setVelocity(0, 0);
+      this.player.body.setAcceleration(0, 0);
+
+      this.physics.resume();
+
+      this.beatManager = new BeatManager(this, BPM);
+      this.beatManager.onBeat((beat) => this.onBeat(beat));
+      this.beatManager.start();
+
+      this.cameras.main.flash(240, 53, 244, 255);
+    }
+
+    applyLevelDesign(firstTime) {
+      const { height } = this.scale;
+
+      this.currentRoadWidth = this.currentLevel.roadWidth;
+      this.roadLeft = this.roadX - this.currentRoadWidth / 2;
+      this.roadRight = this.roadX + this.currentRoadWidth / 2;
+
+      this.edgeGlowLeft.setPosition(this.roadLeft, height / 2);
+      this.edgeGlowRight.setPosition(this.roadRight, height / 2);
+
+      if (this.player) {
+        this.player.setRoadBounds(this.roadLeft, this.roadRight, height);
+      }
+
+      if (!firstTime) {
+        this.combo = 0;
+        this.cameras.main.shake(120, 0.005);
+      }
+    }
+
+    showFinalClearPanel() {
+      const { width, height } = this.scale;
+
+      this.nextLevelPanel = this.add.container(width / 2, height / 2);
+      this.nextLevelPanel.setDepth(1000);
+
+      const panel = this.add.rectangle(0, 0, 560, 320, 0x050611, 0.94);
+      panel.setStrokeStyle(4, 0x35f4ff);
+
+      const title = this.add.text(0, -90, "ALL LEVELS CLEAR", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "38px",
+        color: "#35f4ff",
+        stroke: "#000000",
+        strokeThickness: 5,
+        align: "center",
+      });
+      title.setOrigin(0.5);
+
+      const info = this.add.text(0, -20, `Final Score: ${this.score}\nBest Combo: ${this.bestCombo}`, {
+        fontFamily: "Arial",
+        fontSize: "24px",
+        color: "#ffffff",
+        align: "center",
+        lineSpacing: 10,
+      });
+      info.setOrigin(0.5);
+
+      const replay = this.add.text(0, 90, "PLAY AGAIN", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "24px",
+        color: "#050611",
+        backgroundColor: "#35f4ff",
+        padding: {
+          x: 24,
+          y: 12,
+        },
+      });
+      replay.setOrigin(0.5);
+      replay.setInteractive({ useHandCursor: true });
+
+      replay.on("pointerdown", () => {
+        this.scene.start("GameScene");
+      });
+
+      this.nextLevelPanel.add([panel, title, info, replay]);
+    }
+
+    getLaneFromX(x) {
+      const laneCount = 5;
+      const laneWidth = this.currentRoadWidth / laneCount;
+
+      return Phaser.Math.Clamp(
+        Math.floor((x - this.roadLeft) / laneWidth),
+        0,
+        laneCount - 1
+      );
+    }
 
     onBeat(beat) {
       const blockedLane = this.spawnObstacle(beat);
@@ -1113,34 +1434,58 @@
     }
 
     spawnObstacle(beat) {
-      const types = ["block", "block", "wall", "laser"];
-      const type = Phaser.Utils.Array.GetRandom(types);
+      if (beat.index % this.currentLevel.spawnEveryBeats !== 0) {
+        return null;
+      }
+
+      if (Math.random() > this.currentLevel.spawnChance) {
+        return null;
+      }
+
       const laneCount = 5;
-      const laneWidth = ROAD_WIDTH / laneCount;
-      const lane = Phaser.Math.Between(0, laneCount - 1);
+      const laneWidth = this.currentRoadWidth / laneCount;
+
+      let lane;
+
+      if (Math.random() < this.currentLevel.pressureChance) {
+        const playerLane = this.getLaneFromX(this.player.x);
+        lane = Phaser.Math.Clamp(
+          playerLane + Phaser.Math.Between(-1, 1),
+          0,
+          laneCount - 1
+        );
+      } else {
+        lane = Phaser.Math.Between(0, laneCount - 1);
+      }
+
       const x = this.roadLeft + laneWidth * lane + laneWidth / 2;
 
-      if (Math.abs(x - this.player.x) < SAFE_ZONE_RADIUS && beat.strong) {
+      const safeRadius =
+        this.level <= 2
+          ? SAFE_ZONE_RADIUS
+          : SAFE_ZONE_RADIUS * 0.45;
+
+      if (Math.abs(x - this.player.x) < safeRadius && beat.strong) {
         return null;
+      }
+
+      let type = "block";
+
+      if (Math.random() < this.currentLevel.truckChance) {
+        type = Phaser.Utils.Array.GetRandom(["wall", "laser", "sideTruck"]);
       }
 
       const obstacle = new Obstacle(this, x, SPAWN_Y, type, this.scrollSpeed, beat.color);
       this.obstacles.add(obstacle);
       obstacle.setScrollSpeed(this.scrollSpeed);
 
-      if (type === "laser") {
-        obstacle.setVisualRotation(Phaser.Math.DegToRad(Phaser.Math.Between(-12, 12)));
-        obstacle.body.setSize(obstacle.collisionWidth, obstacle.collisionHeight);
-      }
-
       return lane;
     }
-
     spawnNote(beat, blockedLane) {
       if (beat.index % 2 !== 1) return;
 
       const laneCount = 5;
-      const laneWidth = ROAD_WIDTH / laneCount;
+      const laneWidth = this.currentRoadWidth / laneCount;
       let lane = Phaser.Math.Between(0, laneCount - 1);
 
       if (lane === blockedLane) {
@@ -1237,7 +1582,11 @@
     }
 
     updateUI() {
-      this.uiText.setText(`Score ${this.score}\nCombo ${this.combo}\nBPM ${BPM}`);
+      const timeLeft = Math.max(0, Math.ceil(this.levelTimeLeftMs / 1000));
+
+      this.uiText.setText(
+        `Score ${this.score}\nCombo ${this.combo}\n${this.currentLevel.name}\nTime ${timeLeft}s\nBPM ${BPM}`
+      );
     }
 
     handleCrash() {
