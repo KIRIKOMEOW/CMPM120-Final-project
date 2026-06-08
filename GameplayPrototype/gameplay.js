@@ -457,11 +457,24 @@
       this.maxRoadX = null;
 
       this.glow = scene.add.rectangle(0, 2, CAR_WIDTH + 20, CAR_HEIGHT + 22, 0x00eaff, 0);
+
+      this.shieldAura = scene.add.rectangle(
+        0,
+        0,
+        CAR_WIDTH + 30,
+        CAR_HEIGHT + 34,
+        0x35f4ff,
+        0.18
+      );
+
+      this.shieldAura.setStrokeStyle(3, 0x35f4ff, 0.95);
+      this.shieldAura.setAlpha(0);
+
       this.bodySprite = scene.add.image(0, 0, ASSET_KEYS.player);
       this.bodySprite.setDisplaySize(CAR_WIDTH, CAR_HEIGHT);
       this.bodyRect = this.bodySprite;
 
-      this.add([this.glow, this.bodySprite]);
+      this.add([this.glow, this.shieldAura, this.bodySprite]);
       scene.add.existing(this);
       scene.physics.add.existing(this);
 
@@ -577,6 +590,9 @@
 
       this.glow.alpha = 0.14 + this.driftEnergy * 0.24;
       this.glow.scaleX = 1 + this.driftEnergy * 0.24;
+      if (this.hasShieldVisual && this.shieldAura) {
+        this.shieldAura.rotation += delta * 1.6;
+      }
 
       this.updateParticles(drifting, speedLean);
       this.constrainToRoad();
@@ -593,6 +609,31 @@
       this.x = clampedX;
       this.body.velocity.x = 0;
       this.body.setAccelerationX(0);
+    }
+    setShieldActive(active) {
+      if (!this.shieldAura) return;
+
+      this.hasShieldVisual = active;
+      this.shieldAura.setAlpha(active ? 0.5 : 0);
+      this.shieldAura.setScale(1);
+    }
+
+    pulseShield() {
+      if (!this.shieldAura) return;
+
+      this.scene.tweens.killTweensOf(this.shieldAura);
+      this.shieldAura.setAlpha(0.75);
+      this.shieldAura.setScale(1);
+
+      this.scene.tweens.add({
+        targets: this.shieldAura,
+        scaleX: 1.18,
+        scaleY: 1.12,
+        alpha: 0.45,
+        duration: 220,
+        yoyo: true,
+        ease: "Sine.easeOut",
+      });
     }
 
     onBeat(beat) {
@@ -786,7 +827,21 @@
         .setOrigin(0.5);
 
       const prompt = this.add
-        .text(width / 2, height * 0.68, "Touch to Play", {
+        .text(width / 2, height * 0.60, "START LEVELS", {
+          fontFamily: "Arial",
+          fontSize: "24px",
+          color: "#ffffff",
+          backgroundColor: "#111827",
+          padding: {
+            x: 18,
+            y: 10,
+          },
+        })
+
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
+      const endlessButton = this.add
+        .text(width / 2, height * 0.72, "ENDLESS MODE", {
           fontFamily: "Arial",
           fontSize: "24px",
           color: "#ffffff",
@@ -798,7 +853,6 @@
         })
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true });
-
       const fullscreenButton = this.add
         .text(width - 24, height - 24, "Fullscreen", {
           fontFamily: "Arial",
@@ -826,7 +880,7 @@
         toggleFullscreen();
       });
       const backButton = this.add
-        .text(width / 2, height * 0.82, "Back to Main Menu", {
+        .text(width / 2, height * 0.88, "Back to Main Menu", {
           fontFamily: "Arial",
           fontSize: "20px",
           color: "#ffffff",
@@ -859,12 +913,14 @@
 
       let hasStarted = false;
 
-      const startGame = () => {
+      const startGame = (mode) => {
         if (hasStarted) return;
         hasStarted = true;
 
         this.cameras.main.flash(180, 53, 244, 255);
-        this.time.delayedCall(120, () => this.scene.start("GameScene"));
+        this.time.delayedCall(120, () => {
+          this.scene.start("GameScene", { mode });
+        });
       };
 
       prompt.on("pointerover", () => {
@@ -875,9 +931,24 @@
         prompt.setStyle({ color: "#ffffff" });
       });
 
-      prompt.on("pointerdown", startGame);
+      prompt.on("pointerdown", () => {
+        startGame("levels");
+      });
+      endlessButton.on("pointerover", () => {
+        endlessButton.setStyle({ color: "#fff45b" });
+      });
 
-      this.input.keyboard.once("keydown-SPACE", startGame);
+      endlessButton.on("pointerout", () => {
+        endlessButton.setStyle({ color: "#ffffff" });
+      });
+
+      endlessButton.on("pointerdown", () => {
+        startGame("normalEndless");
+      });
+
+      this.input.keyboard.once("keydown-SPACE", () => {
+        startGame("levels");
+      });
 
       backButton.on("pointerover", () => {
         backButton.setStyle({ color: "#fff45b" });
@@ -911,12 +982,16 @@
   const SPAWN_Y = -60;
   const SAFE_ZONE_RADIUS = 92;
   const NOTE_REWARD_SCORE = 250;
+  const SHOCKWAVE_CHARGE_NEEDED = 5;
+  const SHOCKWAVE_CLEAR_SCORE = 60;
 
   const LEVELS = [
     {
       name: "LEVEL 1",
       title: "OPEN ROAD",
-      goal: "Survive the warm-up traffic.",
+      goal: "",
+      tutorialTitle: "SKILL 1: SHIELD",
+      tutorialText: "Collect notes to activate shield.\nA blue aura appears on your car.\nShield blocks one crash automatically.",
       durationMs: 15000,
       roadWidth: 560,
       startSpeed: 260,
@@ -931,6 +1006,8 @@
       name: "LEVEL 2",
       title: "TRUCK TRAFFIC",
       goal: "Large vehicles join the road.",
+      tutorialTitle: "SKILL 2: SHOCKWAVE",
+      tutorialText: "Collect 5 notes to charge Shockwave.\nTap the bottom-right button to clear traffic.",
       durationMs: 18000,
       roadWidth: 520,
       startSpeed: 320,
@@ -945,6 +1022,8 @@
       name: "LEVEL 3",
       title: "LANE PRESSURE",
       goal: "Traffic starts aiming near your lane.",
+      tutorialTitle: "SKILL 3: PERFECT DRIFT",
+      tutorialText: "Drag farther to drift.\nDrift on the beat to build combo and score faster.",
       durationMs: 20000,
       roadWidth: 480,
       startSpeed: 380,
@@ -959,6 +1038,8 @@
       name: "LEVEL 4",
       title: "NARROW RUN",
       goal: "The road gets tighter.",
+      tutorialTitle: "WARNING: NARROW ROAD",
+      tutorialText: "The road gets tighter.\nWatch the lanes and save your Shockwave.",
       durationMs: 22000,
       roadWidth: 430,
       startSpeed: 440,
@@ -973,6 +1054,8 @@
       name: "LEVEL 5",
       title: "BURNOUT RUSH",
       goal: "Final traffic wave.",
+      tutorialTitle: "FINAL LEVEL",
+      tutorialText: "Traffic is fast and dense.\nSurvive this to unlock Extreme Mode.",
       durationMs: 24000,
       roadWidth: 390,
       startSpeed: 500,
@@ -984,6 +1067,36 @@
       pressureChance: 0.68,
     },
   ];
+  const NORMAL_ENDLESS_LEVEL = {
+    name: "ENDLESS MODE",
+    title: "LONG DRIVE",
+    goal: "Speed slowly rises until you crash.",
+    durationMs: Infinity,
+    roadWidth: 520,
+    startSpeed: 250,
+    maxSpeed: Infinity,
+    speedGain: 28,
+    spawnEveryBeats: 2,
+    spawnChance: 0.65,
+    truckChance: 0.22,
+    pressureChance: 0.18,
+  };
+  const ENDLESS_LEVEL = {
+    name: "EXTREME MODE",
+    title: "NO SPEED LIMIT",
+    goal: "Speed keeps rising until you crash.",
+    durationMs: Infinity,
+    roadWidth: 360,
+    startSpeed: 620,
+    maxSpeed: Infinity,
+    speedGain: 72,
+    spawnEveryBeats: 1,
+    spawnChance: 0.92,
+    truckChance: 0.58,
+    pressureChance: 0.72,
+  };
+
+  const ENDLESS_SCORE_BONUS_PER_SECOND = 18;
 
   class NotePickup extends Phaser.GameObjects.Image {
     constructor(scene, x, y, speed, beatColor) {
@@ -1027,6 +1140,10 @@
       super("GameScene");
     }
 
+    init(data) {
+      this.startMode = data?.mode || "levels";
+    }
+
     preload() {
       preloadGameplayAssets(this);
     }
@@ -1038,13 +1155,28 @@
       this.lastBeatWithDrift = -99;
       this.isGameOver = false;
       this.waitingForNextLevel = false;
+      this.isEndlessMode = this.startMode === "normalEndless";
+      this.endlessTimeMs = 0;
 
-      this.levelIndex = 0;
-      this.level = 1;
-      this.currentLevel = LEVELS[this.levelIndex];
-      this.currentRoadWidth = this.currentLevel.roadWidth;
-      this.levelTimeLeftMs = this.currentLevel.durationMs;
-      this.scrollSpeed = this.currentLevel.startSpeed;
+      this.hasShield = false;
+      this.shockwaveCharge = 0;
+      this.shockwaveReady = false;
+
+      if (this.isEndlessMode) {
+        this.levelIndex = -1;
+        this.level = 0;
+        this.currentLevel = NORMAL_ENDLESS_LEVEL;
+        this.currentRoadWidth = this.currentLevel.roadWidth;
+        this.levelTimeLeftMs = Infinity;
+        this.scrollSpeed = this.currentLevel.startSpeed;
+      } else {
+        this.levelIndex = 0;
+        this.level = 1;
+        this.currentLevel = LEVELS[this.levelIndex];
+        this.currentRoadWidth = this.currentLevel.roadWidth;
+        this.levelTimeLeftMs = this.currentLevel.durationMs;
+        this.scrollSpeed = this.currentLevel.startSpeed;
+      }
 
       this.createTextures();
       this.createWorld();
@@ -1055,24 +1187,36 @@
       this.createColliders();
 
       this.applyLevelDesign(true);
+      if (!this.isEndlessMode) {
+        this.showStartTutorialPanel();
+      }
     }
 
     update(_time, delta) {
       if (this.isGameOver || this.waitingForNextLevel) return;
 
-      this.levelTimeLeftMs -= delta;
+      if (this.isEndlessMode) {
+        this.endlessTimeMs += delta;
+      } else {
+        this.levelTimeLeftMs -= delta;
 
-      if (this.levelTimeLeftMs <= 0) {
-        this.completeLevel();
-        return;
+        if (this.levelTimeLeftMs <= 0) {
+          this.completeLevel();
+          return;
+        }
       }
 
       this.beatManager.update(delta);
 
-      this.scrollSpeed = Math.min(
-        this.currentLevel.maxSpeed,
-        this.scrollSpeed + this.currentLevel.speedGain * (delta / 1000)
-      );
+      if (this.isEndlessMode) {
+        this.scrollSpeed += this.currentLevel.speedGain * (delta / 1000);
+        this.score += Math.floor(ENDLESS_SCORE_BONUS_PER_SECOND * (delta / 1000));
+      } else {
+        this.scrollSpeed = Math.min(
+          this.currentLevel.maxSpeed,
+          this.scrollSpeed + this.currentLevel.speedGain * (delta / 1000)
+        );
+      }
 
       this.updateBackground(delta);
 
@@ -1206,6 +1350,31 @@
       this.beatDot.setDisplaySize(24, 24);
       this.beatDotBaseScaleX = this.beatDot.scaleX;
       this.beatDotBaseScaleY = this.beatDot.scaleY;
+      this.skillButton = this.add.text(
+        this.scale.width - 28,
+        this.scale.height - 28,
+        "SHOCKWAVE\n0/5",
+        {
+          fontFamily: "Arial Black, Arial",
+          fontSize: "18px",
+          color: "#050611",
+          backgroundColor: "#35f4ff",
+          align: "center",
+          padding: {
+            x: 14,
+            y: 10,
+          },
+        }
+      );
+
+      this.skillButton.setOrigin(1, 1);
+      this.skillButton.setDepth(30);
+      this.skillButton.setInteractive({ useHandCursor: true });
+
+      this.skillButton.on("pointerdown", (_pointer, _localX, _localY, event) => {
+        event?.stopPropagation?.();
+        this.useShockwave();
+      });
       this.beatDot.setDepth(10);
       this.updateUI();
     }
@@ -1219,7 +1388,9 @@
     createColliders() {
       this.obstacles = this.physics.add.group({ runChildUpdate: false });
       this.notes = this.physics.add.group({ runChildUpdate: false });
-      this.physics.add.overlap(this.player, this.obstacles, () => this.handleCrash());
+      this.physics.add.overlap(this.player, this.obstacles, (_player, obstacle) => {
+        this.handleCrash(obstacle);
+      });
       this.physics.add.overlap(this.player, this.notes, (_player, note) => this.collectNote(note));
     }
     completeLevel() {
@@ -1246,6 +1417,70 @@
         note.destroy();
       });
     }
+    showStartTutorialPanel() {
+      const { width, height } = this.scale;
+
+      this.waitingForNextLevel = true;
+      this.beatManager.stop();
+      this.physics.pause();
+
+      this.nextLevelPanel = this.add.container(width / 2, height / 2);
+      this.nextLevelPanel.setDepth(1000);
+
+      const panel = this.add.rectangle(0, 0, 600, 330, 0x050611, 0.94);
+      panel.setStrokeStyle(4, 0x35f4ff);
+
+      const title = this.add.text(0, -105, `${this.currentLevel.name}\n${this.currentLevel.title}`, {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "34px",
+        color: "#35f4ff",
+        stroke: "#000000",
+        strokeThickness: 5,
+        align: "center",
+      });
+      title.setOrigin(0.5);
+
+      const info = this.add.text(
+        0,
+        -15,
+        `${this.currentLevel.goal}\n\n${this.currentLevel.tutorialTitle}\n${this.currentLevel.tutorialText}`,
+        {
+          fontFamily: "Arial",
+          fontSize: "20px",
+          color: "#ffffff",
+          align: "center",
+          lineSpacing: 8,
+        }
+      );
+      info.setOrigin(0.5);
+
+      const button = this.add.text(0, 105, "START LEVEL 1", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "24px",
+        color: "#050611",
+        backgroundColor: "#35f4ff",
+        padding: {
+          x: 24,
+          y: 12,
+        },
+      });
+      button.setOrigin(0.5);
+      button.setInteractive({ useHandCursor: true });
+
+      button.on("pointerdown", () => {
+        this.nextLevelPanel.destroy();
+        this.waitingForNextLevel = false;
+        this.physics.resume();
+
+        this.beatManager = new BeatManager(this, BPM);
+        this.beatManager.onBeat((beat) => this.onBeat(beat));
+        this.beatManager.start();
+
+        this.cameras.main.flash(180, 53, 244, 255);
+      });
+
+      this.nextLevelPanel.add([panel, title, info, button]);
+    }
 
     showNextLevelPanel() {
       const { width, height } = this.scale;
@@ -1269,11 +1504,11 @@
 
       const info = this.add.text(
         0,
-        -35,
-        `Next: ${nextLevel.name}\n${nextLevel.title}\n${nextLevel.goal}`,
+        -40,
+        `Next: ${nextLevel.name}\n${nextLevel.title}\n${nextLevel.goal}\n\n${nextLevel.tutorialTitle}\n${nextLevel.tutorialText}`,
         {
           fontFamily: "Arial",
-          fontSize: "22px",
+          fontSize: "19px",
           color: "#ffffff",
           align: "center",
           lineSpacing: 8,
@@ -1348,6 +1583,10 @@
 
       this.edgeGlowLeft.setPosition(this.roadLeft, height / 2);
       this.edgeGlowRight.setPosition(this.roadRight, height / 2);
+      if (this.isEndlessMode) {
+        this.edgeGlowLeft.setFillStyle(0xff2b6d, 0.75);
+        this.edgeGlowRight.setFillStyle(0xfff45b, 0.75);
+      }
 
       if (this.player) {
         this.player.setRoadBounds(this.roadLeft, this.roadRight, height);
@@ -1365,12 +1604,12 @@
       this.nextLevelPanel = this.add.container(width / 2, height / 2);
       this.nextLevelPanel.setDepth(1000);
 
-      const panel = this.add.rectangle(0, 0, 560, 320, 0x050611, 0.94);
-      panel.setStrokeStyle(4, 0x35f4ff);
+      const panel = this.add.rectangle(0, 0, 620, 360, 0x050611, 0.95);
+      panel.setStrokeStyle(4, 0xff2b6d);
 
-      const title = this.add.text(0, -90, "ALL LEVELS CLEAR", {
+      const title = this.add.text(0, -125, "ALL LEVELS CLEAR", {
         fontFamily: "Arial Black, Arial",
-        fontSize: "38px",
+        fontSize: "36px",
         color: "#35f4ff",
         stroke: "#000000",
         strokeThickness: 5,
@@ -1378,35 +1617,92 @@
       });
       title.setOrigin(0.5);
 
-      const info = this.add.text(0, -20, `Final Score: ${this.score}\nBest Combo: ${this.bestCombo}`, {
-        fontFamily: "Arial",
-        fontSize: "24px",
-        color: "#ffffff",
-        align: "center",
-        lineSpacing: 10,
-      });
-      info.setOrigin(0.5);
+      const warning = this.add.text(
+        0,
+        -45,
+        "WARNING: EXTREME MODE UNLOCKED\nSpeed will keep increasing until you crash.\nDo you want to challenge it?",
+        {
+          fontFamily: "Arial",
+          fontSize: "22px",
+          color: "#ffffff",
+          align: "center",
+          lineSpacing: 8,
+        }
+      );
+      warning.setOrigin(0.5);
 
-      const replay = this.add.text(0, 90, "PLAY AGAIN", {
+      const challenge = this.add.text(-135, 100, "CHALLENGE", {
         fontFamily: "Arial Black, Arial",
-        fontSize: "24px",
+        fontSize: "22px",
         color: "#050611",
-        backgroundColor: "#35f4ff",
+        backgroundColor: "#ff2b6d",
         padding: {
-          x: 24,
+          x: 22,
           y: 12,
         },
       });
-      replay.setOrigin(0.5);
-      replay.setInteractive({ useHandCursor: true });
+      challenge.setOrigin(0.5);
+      challenge.setInteractive({ useHandCursor: true });
 
-      replay.on("pointerdown", () => {
-        this.scene.start("GameScene");
+      const finish = this.add.text(135, 100, "FINISH RUN", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "22px",
+        color: "#050611",
+        backgroundColor: "#35f4ff",
+        padding: {
+          x: 22,
+          y: 12,
+        },
+      });
+      finish.setOrigin(0.5);
+      finish.setInteractive({ useHandCursor: true });
+
+      challenge.on("pointerdown", () => {
+        this.startEndlessMode();
       });
 
-      this.nextLevelPanel.add([panel, title, info, replay]);
-    }
+      finish.on("pointerdown", () => {
+        this.scene.start("GameOverScene", {
+          score: this.score,
+          combo: this.bestCombo,
+        });
+      });
 
+      this.nextLevelPanel.add([panel, title, warning, challenge, finish]);
+
+      this.cameras.main.flash(240, 255, 43, 109);
+    }
+    startEndlessMode() {
+      if (this.nextLevelPanel) {
+        this.nextLevelPanel.destroy();
+      }
+
+      this.isEndlessMode = true;
+      this.waitingForNextLevel = false;
+      this.level = LEVELS.length + 1;
+      this.currentLevel = ENDLESS_LEVEL;
+      this.currentRoadWidth = ENDLESS_LEVEL.roadWidth;
+      this.levelTimeLeftMs = Infinity;
+      this.endlessTimeMs = 0;
+      this.scrollSpeed = ENDLESS_LEVEL.startSpeed;
+      this.combo = 0;
+
+      this.applyLevelDesign(false);
+
+      this.player.setPosition(this.scale.width / 2, this.scale.height - 105);
+      this.player.body.setVelocity(0, 0);
+      this.player.body.setAcceleration(0, 0);
+
+      this.physics.resume();
+
+      this.beatManager = new BeatManager(this, BPM);
+
+      this.beatManager.onBeat((beat) => this.onBeat(beat));
+      this.beatManager.start();
+
+      this.cameras.main.flash(300, 255, 43, 109);
+      this.cameras.main.shake(220, 0.012);
+    }
     getLaneFromX(x) {
       const laneCount = 5;
       const laneWidth = this.currentRoadWidth / laneCount;
@@ -1503,9 +1799,45 @@
       if (!note?.active) return;
 
       this.score += NOTE_REWARD_SCORE;
+
+      this.hasShield = true;
+      this.player.setShieldActive(true);
+      this.player.pulseShield();
+
+      this.shockwaveCharge = Math.min(
+        SHOCKWAVE_CHARGE_NEEDED,
+        this.shockwaveCharge + 1
+      );
+
+      if (this.shockwaveCharge >= SHOCKWAVE_CHARGE_NEEDED) {
+        this.shockwaveReady = true;
+      }
+
       this.beatManager.playNotePickupSound();
       this.pulseUI(0xfff45b);
       note.destroy();
+    }
+    useShockwave() {
+      if (!this.shockwaveReady || this.isGameOver || this.waitingForNextLevel) {
+        return;
+      }
+
+      this.shockwaveReady = false;
+      this.shockwaveCharge = 0;
+
+      this.obstacles.getChildren().forEach((obstacle) => {
+        if (!obstacle.active) return;
+
+        if (obstacle.y > -80 && obstacle.y < this.scale.height + 40) {
+          obstacle.destroy();
+          this.score += SHOCKWAVE_CLEAR_SCORE;
+        }
+      });
+
+      this.cameras.main.flash(180, 53, 244, 255);
+      this.cameras.main.shake(140, 0.008);
+      this.pulseUI(0x35f4ff);
+      this.updateUI();
     }
 
     pulseWorld(beat) {
@@ -1582,15 +1914,56 @@
     }
 
     updateUI() {
-      const timeLeft = Math.max(0, Math.ceil(this.levelTimeLeftMs / 1000));
+      if (this.isEndlessMode) {
+        const survivalTime = Math.floor(this.endlessTimeMs / 1000);
 
-      this.uiText.setText(
-        `Score ${this.score}\nCombo ${this.combo}\n${this.currentLevel.name}\nTime ${timeLeft}s\nBPM ${BPM}`
-      );
+        this.uiText.setText(
+          `Score ${this.score}\nCombo ${this.combo}\n${this.currentLevel.name}\nSurvive ${survivalTime}s\nSpeed ${Math.floor(this.scrollSpeed)}\nShield ${this.hasShield ? "READY" : "NONE"}\nBPM ${BPM}`
+        );
+      } else {
+        const timeLeft = Math.max(0, Math.ceil(this.levelTimeLeftMs / 1000));
+
+        this.uiText.setText(
+          `Score ${this.score}\nCombo ${this.combo}\n${this.currentLevel.name}\nTime ${timeLeft}s\nShield ${this.hasShield ? "READY" : "NONE"}\nBPM ${BPM}`
+        );
+      }
+
+      if (this.skillButton) {
+        if (this.shockwaveReady) {
+          this.skillButton.setText("SHOCKWAVE\nREADY");
+          this.skillButton.setStyle({
+            color: "#050611",
+            backgroundColor: "#fff45b",
+          });
+        } else {
+          this.skillButton.setText(`SHOCKWAVE\n${this.shockwaveCharge}/${SHOCKWAVE_CHARGE_NEEDED}`);
+          this.skillButton.setStyle({
+            color: "#050611",
+            backgroundColor: "#35f4ff",
+          });
+        }
+      }
     }
 
-    handleCrash() {
+    handleCrash(obstacle) {
       if (this.isGameOver) return;
+
+      if (this.hasShield) {
+        this.hasShield = false;
+        this.player.setShieldActive(false);
+        this.combo = 0;
+
+
+        if (obstacle?.active) {
+          obstacle.destroy();
+        }
+
+        this.cameras.main.flash(180, 53, 244, 255);
+        this.cameras.main.shake(180, 0.01);
+        this.pulseUI(0x35f4ff);
+        this.updateUI();
+        return;
+      }
 
       this.isGameOver = true;
       this.combo = 0;
