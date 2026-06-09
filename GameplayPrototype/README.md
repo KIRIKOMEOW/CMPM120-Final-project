@@ -1,8 +1,15 @@
-Gameplay Prototype: Music Drift Runner
-======================================
+Bassline Burnout Gameplay Prototype
+===================================
 Playable link:https://kirikomeow.github.io/CMPM120-Final-project/GameplayPrototype/index.html
 
-Music Drift Runner is the core gameplay prototype for our final project. It is a rhythm-driven arcade runner made with Phaser. The player controls a neon car, dodges beat-spawned obstacles, and tries to build score and combo while the road speed increases over time.
+Bassline Burnout is the core gameplay prototype for our final project. It is a rhythm-driven arcade runner made with Phaser. The player controls a neon car, dodges beat-spawned obstacles, and tries to build score and combo while the road speed increases over time.
+
+Team Roles
+----------
+
+- Zhizhuo Xu — Production Lead
+- Michael Pu Yang — Technology Lead
+- Weichen Sun — Art Lead
 
 How to Play
 -----------
