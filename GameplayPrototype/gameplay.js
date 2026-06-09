@@ -877,7 +877,7 @@
       this.createBackground(width, height);
 
       const title = this.add
-        .text(width / 2, height * 0.34, "MUSIC DRIFT", {
+        .text(width / 2, height * 0.34, "BASSLINE BURNOUT", {
           fontFamily: "Arial Black, Arial",
           fontSize: "64px",
           color: "#35f4ff",
