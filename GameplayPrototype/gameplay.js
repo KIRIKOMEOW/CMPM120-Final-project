@@ -511,6 +511,13 @@
 
     update(cursors, keys, deltaMs, touchControl) {
       const delta = deltaMs / 1000;
+      const playerSpeedMultiplier =
+        this.scene?.currentLevel?.playerSpeedMultiplier || 1;
+
+      const normalMaxSpeed = MAX_X_SPEED * playerSpeedMultiplier;
+      const driftMaxSpeed = DRIFT_MAX_X_SPEED * playerSpeedMultiplier;
+      const normalAccel = NORMAL_ACCEL * playerSpeedMultiplier;
+      const driftAccel = DRIFT_ACCEL * playerSpeedMultiplier;
 
       const keyboardLeft = cursors.left.isDown || keys.left.isDown;
       const keyboardRight = cursors.right.isDown || keys.right.isDown;
@@ -536,9 +543,9 @@
           direction = Math.sign(distance);
 
           const targetVelocity = Phaser.Math.Clamp(
-            distance * 8,
-            -DRIFT_MAX_X_SPEED,
-            DRIFT_MAX_X_SPEED
+            distance * 8 * playerSpeedMultiplier,
+            -driftMaxSpeed,
+            driftMaxSpeed
           );
 
           this.body.setVelocityX(
@@ -555,12 +562,12 @@
       }
 
       this.body.setDragX(drifting ? DRIFT_DRAG : NORMAL_DRAG);
-      this.body.setMaxVelocity(drifting ? DRIFT_MAX_X_SPEED : MAX_X_SPEED, 0);
+      this.body.setMaxVelocity(drifting ? driftMaxSpeed : normalMaxSpeed, 0);
 
       if (!touchActive) {
         if (direction !== 0) {
           this.body.setAccelerationX(
-            direction * (drifting ? DRIFT_ACCEL : NORMAL_ACCEL)
+            direction * (drifting ? driftAccel : normalAccel)
           );
         } else {
           this.body.setAccelerationX(0);
@@ -576,7 +583,7 @@
       );
 
       const speedLean = Phaser.Math.Clamp(
-        this.body.velocity.x / DRIFT_MAX_X_SPEED,
+        this.body.velocity.x / driftMaxSpeed,
         -1,
         1
       );
@@ -1001,6 +1008,9 @@
       spawnChance: 0.55,
       truckChance: 0,
       pressureChance: 0,
+      playerSpeedMultiplier: 1.0,
+      waveChance: 0,
+      waveEveryBeats: 999,
     },
     {
       name: "LEVEL 2",
@@ -1017,6 +1027,9 @@
       spawnChance: 0.68,
       truckChance: 0.28,
       pressureChance: 0.1,
+      playerSpeedMultiplier: 1.08,
+      waveChance: 0,
+      waveEveryBeats: 999,
     },
     {
       name: "LEVEL 3",
@@ -1033,6 +1046,9 @@
       spawnChance: 0.78,
       truckChance: 0.36,
       pressureChance: 0.45,
+      playerSpeedMultiplier: 1.18,
+      waveChance: 0.04,
+      waveEveryBeats: 10,
     },
     {
       name: "LEVEL 4",
@@ -1049,6 +1065,9 @@
       spawnChance: 0.86,
       truckChance: 0.45,
       pressureChance: 0.55,
+      playerSpeedMultiplier: 1.3,
+      waveChance: 0.12,
+      waveEveryBeats: 8,
     },
     {
       name: "LEVEL 5",
@@ -1065,6 +1084,9 @@
       spawnChance: 0.88,
       truckChance: 0.5,
       pressureChance: 0.68,
+      playerSpeedMultiplier: 1.42,
+      waveChance: 0.18,
+      waveEveryBeats: 6,
     },
   ];
   const NORMAL_ENDLESS_LEVEL = {
@@ -1080,6 +1102,9 @@
     spawnChance: 0.65,
     truckChance: 0.22,
     pressureChance: 0.18,
+    playerSpeedMultiplier: 1.15,
+    waveChance: 0.08,
+    waveEveryBeats: 10,
   };
   const ENDLESS_LEVEL = {
     name: "EXTREME MODE",
@@ -1094,6 +1119,9 @@
     spawnChance: 0.92,
     truckChance: 0.58,
     pressureChance: 0.72,
+    playerSpeedMultiplier: 1.55,
+    waveChance: 0.24,
+    waveEveryBeats: 5,
   };
 
   const ENDLESS_SCORE_BONUS_PER_SECOND = 18;
@@ -1147,7 +1175,32 @@
     preload() {
       preloadGameplayAssets(this);
     }
+    showLaneWarning(x, color = 0xff2b6d) {
+      if (this.isGameOver || this.waitingForNextLevel || this.isPausedByUser) return;
 
+      const warning = this.add.text(x, 42, "!", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "42px",
+        color: "#ffffff",
+        stroke: "#ff2b6d",
+        strokeThickness: 6,
+      });
+
+      warning.setOrigin(0.5);
+      warning.setDepth(800);
+      warning.setTint(color);
+
+      this.tweens.add({
+        targets: warning,
+        alpha: 0.15,
+        scale: 1.35,
+        duration: 160,
+        yoyo: true,
+        repeat: 2,
+        ease: "Sine.easeInOut",
+        onComplete: () => warning.destroy(),
+      });
+    }
     create() {
       this.score = 0;
       this.combo = 0;
@@ -1155,6 +1208,8 @@
       this.lastBeatWithDrift = -99;
       this.isGameOver = false;
       this.waitingForNextLevel = false;
+      this.isPausedByUser = false;
+      this.lastComboToast = 0;
       this.isEndlessMode = this.startMode === "normalEndless";
       this.endlessTimeMs = 0;
 
@@ -1193,7 +1248,7 @@
     }
 
     update(_time, delta) {
-      if (this.isGameOver || this.waitingForNextLevel) return;
+      if (this.isGameOver || this.waitingForNextLevel || this.isPausedByUser) return;
 
       if (this.isEndlessMode) {
         this.endlessTimeMs += delta;
@@ -1239,6 +1294,10 @@
           this.bestCombo = Math.max(this.bestCombo, this.combo);
           this.score += 100 + this.combo * 8;
           this.pulseUI(0x35f4ff);
+        }
+        if (this.combo >= 10 && this.combo % 10 === 0 && this.combo !== this.lastComboToast) {
+          this.lastComboToast = this.combo;
+          this.showToast(`COMBO x${this.combo}`, 0xfff45b);
         }
 
         if (obstacle.y > this.scale.height + 100) {
@@ -1376,6 +1435,38 @@
         this.useShockwave();
       });
       this.beatDot.setDepth(10);
+      this.pauseButton = this.add.text(this.scale.width - 28, 24, "PAUSE", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "18px",
+        color: "#050611",
+        backgroundColor: "#ffffff",
+        padding: {
+          x: 14,
+          y: 8,
+        },
+      });
+
+      this.pauseButton.setOrigin(1, 0);
+      this.pauseButton.setDepth(40);
+      this.pauseButton.setInteractive({ useHandCursor: true });
+
+      this.pauseButton.on("pointerdown", (_pointer, _localX, _localY, event) => {
+        event?.stopPropagation?.();
+        this.openPauseMenu();
+      });
+
+      this.toastText = this.add.text(this.scale.width / 2, this.scale.height * 0.24, "", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "32px",
+        color: "#fff45b",
+        stroke: "#000000",
+        strokeThickness: 5,
+        align: "center",
+      });
+
+      this.toastText.setOrigin(0.5);
+      this.toastText.setDepth(900);
+      this.toastText.setAlpha(0);
       this.updateUI();
     }
 
@@ -1392,6 +1483,89 @@
         this.handleCrash(obstacle);
       });
       this.physics.add.overlap(this.player, this.notes, (_player, note) => this.collectNote(note));
+    }
+    openPauseMenu() {
+      if (this.isGameOver || this.waitingForNextLevel || this.isPausedByUser) return;
+
+      this.isPausedByUser = true;
+      this.physics.pause();
+      this.beatManager.stop();
+
+      const { width, height } = this.scale;
+
+      this.pausePanel = this.add.container(width / 2, height / 2);
+      this.pausePanel.setDepth(1200);
+
+      const panel = this.add.rectangle(0, 0, 420, 300, 0x050611, 0.95);
+      panel.setStrokeStyle(4, 0xffffff);
+
+      const title = this.add.text(0, -95, "PAUSED", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "36px",
+        color: "#fff45b",
+        stroke: "#000000",
+        strokeThickness: 5,
+      });
+      title.setOrigin(0.5);
+
+      const resume = this.add.text(0, -25, "RESUME", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "24px",
+        color: "#050611",
+        backgroundColor: "#35f4ff",
+        padding: { x: 24, y: 10 },
+      });
+      resume.setOrigin(0.5);
+      resume.setInteractive({ useHandCursor: true });
+
+      const restart = this.add.text(0, 45, "RESTART", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "24px",
+        color: "#050611",
+        backgroundColor: "#fff45b",
+        padding: { x: 24, y: 10 },
+      });
+      restart.setOrigin(0.5);
+      restart.setInteractive({ useHandCursor: true });
+
+      const menu = this.add.text(0, 115, "MAIN MENU", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "22px",
+        color: "#050611",
+        backgroundColor: "#ff2bd6",
+        padding: { x: 24, y: 10 },
+      });
+      menu.setOrigin(0.5);
+      menu.setInteractive({ useHandCursor: true });
+
+      resume.on("pointerdown", () => this.closePauseMenu());
+
+      restart.on("pointerdown", () => {
+        this.scene.start("GameScene", {
+          mode: this.startMode,
+        });
+      });
+
+      menu.on("pointerdown", () => {
+        this.scene.start("MenuScene");
+      });
+
+      this.pausePanel.add([panel, title, resume, restart, menu]);
+    }
+
+    closePauseMenu() {
+      if (this.pausePanel) {
+        this.pausePanel.destroy();
+      }
+
+      this.isPausedByUser = false;
+      this.physics.resume();
+
+      this.beatManager = new BeatManager(this, BPM);
+      this.beatManager.onBeat((beat) => this.onBeat(beat));
+      this.beatManager.start();
+
+      this.cameras.main.flash(120, 53, 244, 255);
     }
     completeLevel() {
       if (this.waitingForNextLevel) return;
@@ -1427,12 +1601,12 @@
       this.nextLevelPanel = this.add.container(width / 2, height / 2);
       this.nextLevelPanel.setDepth(1000);
 
-      const panel = this.add.rectangle(0, 0, 600, 330, 0x050611, 0.94);
+      const panel = this.add.rectangle(0, 0, 640, 390, 0x050611, 0.94);
       panel.setStrokeStyle(4, 0x35f4ff);
 
-      const title = this.add.text(0, -105, `${this.currentLevel.name}\n${this.currentLevel.title}`, {
+      const title = this.add.text(0, -135, this.currentLevel.name, {
         fontFamily: "Arial Black, Arial",
-        fontSize: "34px",
+        fontSize: "32px",
         color: "#35f4ff",
         stroke: "#000000",
         strokeThickness: 5,
@@ -1440,23 +1614,40 @@
       });
       title.setOrigin(0.5);
 
-      const info = this.add.text(
-        0,
-        -15,
-        `${this.currentLevel.goal}\n\n${this.currentLevel.tutorialTitle}\n${this.currentLevel.tutorialText}`,
-        {
-          fontFamily: "Arial",
-          fontSize: "20px",
-          color: "#ffffff",
-          align: "center",
-          lineSpacing: 8,
-        }
-      );
+      const subtitle = this.add.text(0, -92, this.currentLevel.title, {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "26px",
+        color: "#fff45b",
+        stroke: "#000000",
+        strokeThickness: 4,
+        align: "center",
+      });
+      subtitle.setOrigin(0.5);
+
+      const tutorialText = [
+        this.currentLevel.goal,
+        this.currentLevel.tutorialTitle,
+        this.currentLevel.tutorialText,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
+      const info = this.add.text(0, 5, tutorialText, {
+        fontFamily: "Arial",
+        fontSize: "18px",
+        color: "#ffffff",
+        align: "center",
+        lineSpacing: 7,
+        wordWrap: {
+          width: 540,
+          useAdvancedWrap: true,
+        },
+      });
       info.setOrigin(0.5);
 
-      const button = this.add.text(0, 105, "START LEVEL 1", {
+      const button = this.add.text(0, 135, "START LEVEL 1", {
         fontFamily: "Arial Black, Arial",
-        fontSize: "24px",
+        fontSize: "22px",
         color: "#050611",
         backgroundColor: "#35f4ff",
         padding: {
@@ -1479,7 +1670,7 @@
         this.cameras.main.flash(180, 53, 244, 255);
       });
 
-      this.nextLevelPanel.add([panel, title, info, button]);
+      this.nextLevelPanel.add([panel, title, subtitle, info, button]);
     }
 
     showNextLevelPanel() {
@@ -1489,36 +1680,63 @@
       this.nextLevelPanel = this.add.container(width / 2, height / 2);
       this.nextLevelPanel.setDepth(1000);
 
-      const panel = this.add.rectangle(0, 0, 560, 320, 0x050611, 0.92);
+      const panel = this.add.rectangle(0, 0, 660, 400, 0x050611, 0.93);
       panel.setStrokeStyle(4, 0xfff45b);
 
-      const title = this.add.text(0, -105, `${this.currentLevel.name} CLEAR`, {
+      const clearTitle = this.add.text(0, -145, `${this.currentLevel.name} CLEAR`, {
         fontFamily: "Arial Black, Arial",
-        fontSize: "38px",
+        fontSize: "30px",
         color: "#fff45b",
         stroke: "#000000",
         strokeThickness: 5,
         align: "center",
       });
-      title.setOrigin(0.5);
+      clearTitle.setOrigin(0.5);
 
-      const info = this.add.text(
-        0,
-        -40,
-        `Next: ${nextLevel.name}\n${nextLevel.title}\n${nextLevel.goal}\n\n${nextLevel.tutorialTitle}\n${nextLevel.tutorialText}`,
-        {
-          fontFamily: "Arial",
-          fontSize: "19px",
-          color: "#ffffff",
-          align: "center",
-          lineSpacing: 8,
-        }
-      );
-      info.setOrigin(0.5);
-
-      const button = this.add.text(0, 95, `NEXT ${nextLevel.name}`, {
+      const nextTitle = this.add.text(0, -100, `NEXT: ${nextLevel.name}`, {
         fontFamily: "Arial Black, Arial",
         fontSize: "24px",
+        color: "#ffffff",
+        stroke: "#000000",
+        strokeThickness: 4,
+        align: "center",
+      });
+      nextTitle.setOrigin(0.5);
+
+      const levelName = this.add.text(0, -62, nextLevel.title, {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "25px",
+        color: "#35f4ff",
+        stroke: "#000000",
+        strokeThickness: 4,
+        align: "center",
+      });
+      levelName.setOrigin(0.5);
+
+      const tutorialText = [
+        nextLevel.goal,
+        nextLevel.tutorialTitle,
+        nextLevel.tutorialText,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
+      const info = this.add.text(0, 30, tutorialText, {
+        fontFamily: "Arial",
+        fontSize: "17px",
+        color: "#ffffff",
+        align: "center",
+        lineSpacing: 6,
+        wordWrap: {
+          width: 560,
+          useAdvancedWrap: true,
+        },
+      });
+      info.setOrigin(0.5);
+
+      const button = this.add.text(0, 145, `NEXT ${nextLevel.name}`, {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "22px",
         color: "#050611",
         backgroundColor: "#fff45b",
         padding: {
@@ -1541,7 +1759,7 @@
         this.startNextLevel();
       });
 
-      this.nextLevelPanel.add([panel, title, info, button]);
+      this.nextLevelPanel.add([panel, clearTitle, nextTitle, levelName, info, button]);
 
       this.cameras.main.flash(220, 255, 244, 91);
     }
@@ -1604,12 +1822,12 @@
       this.nextLevelPanel = this.add.container(width / 2, height / 2);
       this.nextLevelPanel.setDepth(1000);
 
-      const panel = this.add.rectangle(0, 0, 620, 360, 0x050611, 0.95);
+      const panel = this.add.rectangle(0, 0, 660, 390, 0x050611, 0.95);
       panel.setStrokeStyle(4, 0xff2b6d);
 
-      const title = this.add.text(0, -125, "ALL LEVELS CLEAR", {
+      const title = this.add.text(0, -130, "ALL LEVELS CLEAR", {
         fontFamily: "Arial Black, Arial",
-        fontSize: "36px",
+        fontSize: "32px",
         color: "#35f4ff",
         stroke: "#000000",
         strokeThickness: 5,
@@ -1617,23 +1835,37 @@
       });
       title.setOrigin(0.5);
 
+      const warningTitle = this.add.text(0, -78, "EXTREME MODE UNLOCKED", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "24px",
+        color: "#ff2b6d",
+        stroke: "#000000",
+        strokeThickness: 4,
+        align: "center",
+      });
+      warningTitle.setOrigin(0.5);
+
       const warning = this.add.text(
         0,
-        -45,
-        "WARNING: EXTREME MODE UNLOCKED\nSpeed will keep increasing until you crash.\nDo you want to challenge it?",
+        0,
+        "WARNING\nSpeed will keep increasing until you crash.\nDo you want to challenge it?",
         {
           fontFamily: "Arial",
-          fontSize: "22px",
+          fontSize: "19px",
           color: "#ffffff",
           align: "center",
           lineSpacing: 8,
+          wordWrap: {
+            width: 560,
+            useAdvancedWrap: true,
+          },
         }
       );
       warning.setOrigin(0.5);
 
-      const challenge = this.add.text(-135, 100, "CHALLENGE", {
+      const challenge = this.add.text(-140, 125, "CHALLENGE", {
         fontFamily: "Arial Black, Arial",
-        fontSize: "22px",
+        fontSize: "21px",
         color: "#050611",
         backgroundColor: "#ff2b6d",
         padding: {
@@ -1644,9 +1876,9 @@
       challenge.setOrigin(0.5);
       challenge.setInteractive({ useHandCursor: true });
 
-      const finish = this.add.text(135, 100, "FINISH RUN", {
+      const finish = this.add.text(140, 125, "FINISH RUN", {
         fontFamily: "Arial Black, Arial",
-        fontSize: "22px",
+        fontSize: "21px",
         color: "#050611",
         backgroundColor: "#35f4ff",
         padding: {
@@ -1668,7 +1900,7 @@
         });
       });
 
-      this.nextLevelPanel.add([panel, title, warning, challenge, finish]);
+      this.nextLevelPanel.add([panel, title, warningTitle, warning, challenge, finish]);
 
       this.cameras.main.flash(240, 255, 43, 109);
     }
@@ -1728,8 +1960,49 @@
         this.pulseUI(0xfff45b);
       }
     }
+    trySpawnRoadblockWave(beat) {
+      const waveChance = this.currentLevel.waveChance || 0;
+      const waveEveryBeats = this.currentLevel.waveEveryBeats || 999;
+
+      if (waveChance <= 0) return false;
+      if (beat.index % waveEveryBeats !== 0) return false;
+      if (Math.random() > waveChance) return false;
+
+      if (!this.shockwaveReady && Math.random() < 0.75) {
+        return false;
+      }
+
+      const laneCount = 5;
+      const laneWidth = this.currentRoadWidth / laneCount;
+
+      for (let lane = 0; lane < laneCount; lane += 1) {
+        const x = this.roadLeft + laneWidth * lane + laneWidth / 2;
+        const type = lane % 2 === 0 ? "wall" : "block";
+
+        const obstacle = new Obstacle(
+          this,
+          x,
+          SPAWN_Y - 20,
+          type,
+          this.scrollSpeed,
+          0xff2b6d
+        );
+
+        this.obstacles.add(obstacle);
+        obstacle.setScrollSpeed(this.scrollSpeed);
+        this.showLaneWarning(x, 0xff2b6d);
+      }
+
+      this.showToast("ROADBLOCK! USE SHOCKWAVE!", 0xff2b6d);
+      this.cameras.main.shake(120, 0.006);
+
+      return true;
+    }
 
     spawnObstacle(beat) {
+      if (this.trySpawnRoadblockWave(beat)) {
+        return -1;
+      }
       if (beat.index % this.currentLevel.spawnEveryBeats !== 0) {
         return null;
       }
@@ -1775,6 +2048,10 @@
       this.obstacles.add(obstacle);
       obstacle.setScrollSpeed(this.scrollSpeed);
 
+      if (this.level >= 3 || this.isEndlessMode) {
+        this.showLaneWarning(x, beat.color);
+      }
+
       return lane;
     }
     spawnNote(beat, blockedLane) {
@@ -1809,8 +2086,9 @@
         this.shockwaveCharge + 1
       );
 
-      if (this.shockwaveCharge >= SHOCKWAVE_CHARGE_NEEDED) {
+      if (this.shockwaveCharge >= SHOCKWAVE_CHARGE_NEEDED && !this.shockwaveReady) {
         this.shockwaveReady = true;
+        this.showToast("SHOCKWAVE READY", 0xfff45b);
       }
 
       this.beatManager.playNotePickupSound();
@@ -1871,6 +2149,32 @@
       });
 
       this.pulseUI(beat.color);
+    }
+    showToast(message, color = 0xfff45b) {
+      if (!this.toastText) return;
+
+      this.tweens.killTweensOf(this.toastText);
+
+      this.toastText.setText(message);
+      this.toastText.setColor("#ffffff");
+      this.toastText.setTint(color);
+      this.toastText.setAlpha(1);
+      this.toastText.setScale(0.85);
+
+      this.tweens.add({
+        targets: this.toastText,
+        scale: 1.08,
+        duration: 120,
+        ease: "Back.easeOut",
+      });
+
+      this.tweens.add({
+        targets: this.toastText,
+        alpha: 0,
+        delay: 650,
+        duration: 350,
+        ease: "Sine.easeIn",
+      });
     }
 
     pulseUI(color) {
@@ -1952,12 +2256,13 @@
         this.hasShield = false;
         this.player.setShieldActive(false);
         this.combo = 0;
+        this.showToast("SHIELD BREAK", 0x35f4ff);
 
 
         if (obstacle?.active) {
           obstacle.destroy();
         }
-
+        this.showToast("SHOCKWAVE!", 0x35f4ff);
         this.cameras.main.flash(180, 53, 244, 255);
         this.cameras.main.shake(180, 0.01);
         this.pulseUI(0x35f4ff);
