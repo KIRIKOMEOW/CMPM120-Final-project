@@ -14,24 +14,67 @@
   const ASSET_KEYS = {
     background: "road-background",
     note: "ui-note",
+
     npcCar: "npc-car",
+    npcBlueCar: "npc-blue-car",
+    npcGreenCar: "npc-green-car",
+    npcRedCar: "npc-red-car",
+
     npcTruck: "npc-truck",
+    npcCyanTruck: "npc-cyan-truck",
+    npcPurpleTruck: "npc-purple-truck",
+    npcOrangeSemi: "npc-orange-semi",
+
     player: "player-car",
     rhythm: "ui-rhythm",
   };
   const ASSET_PATHS = {
     [ASSET_KEYS.background]: "../assets/background.png",
     [ASSET_KEYS.note]: "../assets/note.png",
+
     [ASSET_KEYS.npcCar]: "../assets/npc_car.png",
+    [ASSET_KEYS.npcBlueCar]: "../assets/npc-blue-car.png",
+    [ASSET_KEYS.npcGreenCar]: "../assets/npc-green-car.png",
+    [ASSET_KEYS.npcRedCar]: "../assets/npc-red-car.png",
+
     [ASSET_KEYS.npcTruck]: "../assets/npc_truck.png",
+    [ASSET_KEYS.npcCyanTruck]: "../assets/npc-cyan-truck.png",
+    [ASSET_KEYS.npcPurpleTruck]: "../assets/npc-purple-truck.png",
+    [ASSET_KEYS.npcOrangeSemi]: "../assets/npc-orange-semi.png",
+
     [ASSET_KEYS.player]: "../assets/player.png",
     [ASSET_KEYS.rhythm]: "../assets/rhythm.png",
+  };
+  const MUSIC_KEYS = {
+    level1: "music-level-1",
+    level2: "music-level-2",
+    level3: "music-level-3",
+    level4: "music-level-4",
+    level5: "music-level-5",
+    normalEndless: "music-normal-endless",
+    extreme: "music-extreme",
+  };
+
+  const MUSIC_PATHS = {
+    [MUSIC_KEYS.level1]: "../assets/music/level_1_open_road_150bpm.wav",
+    [MUSIC_KEYS.level2]: "../assets/music/level_2_truck_traffic_150bpm.wav",
+    [MUSIC_KEYS.level3]: "../assets/music/level_3_lane_pressure_150bpm.wav",
+    [MUSIC_KEYS.level4]: "../assets/music/level_4_narrow_run_150bpm.wav",
+    [MUSIC_KEYS.level5]: "../assets/music/level_5_burnout_rush_150bpm.wav",
+    [MUSIC_KEYS.normalEndless]: "../assets/music/normal_endless_long_drive_150bpm.wav",
+    [MUSIC_KEYS.extreme]: "../assets/music/extreme_mode_no_speed_limit_150bpm.wav",
   };
 
   function preloadGameplayAssets(scene) {
     Object.entries(ASSET_PATHS).forEach(([key, path]) => {
       if (!scene.textures.exists(key)) {
         scene.load.image(key, path);
+      }
+    });
+
+    Object.entries(MUSIC_PATHS).forEach(([key, path]) => {
+      if (!scene.cache.audio.exists(key)) {
+        scene.load.audio(key, path);
       }
     });
   }
@@ -747,17 +790,23 @@
     static getVisual(type) {
       if (type === "sideTruck") {
         return {
-          texture: ASSET_KEYS.npcTruck,
-          width: 130,
+          texture: ASSET_KEYS.npcOrangeSemi,
+          width: 132,
           height: 64,
-          collisionWidth: 108,
+          collisionWidth: 110,
           collisionHeight: 38,
         };
       }
 
       if (type === "wall") {
+        const truckTextures = [
+          ASSET_KEYS.npcTruck,
+          ASSET_KEYS.npcCyanTruck,
+          ASSET_KEYS.npcPurpleTruck,
+        ];
+
         return {
-          texture: ASSET_KEYS.npcTruck,
+          texture: Phaser.Utils.Array.GetRandom(truckTextures),
           width: 72,
           height: 130,
           collisionWidth: 38,
@@ -766,8 +815,14 @@
       }
 
       if (type === "laser") {
+        const truckTextures = [
+          ASSET_KEYS.npcTruck,
+          ASSET_KEYS.npcCyanTruck,
+          ASSET_KEYS.npcPurpleTruck,
+        ];
+
         return {
-          texture: ASSET_KEYS.npcTruck,
+          texture: Phaser.Utils.Array.GetRandom(truckTextures),
           width: 66,
           height: 120,
           collisionWidth: 36,
@@ -775,8 +830,15 @@
         };
       }
 
+      const carTextures = [
+        ASSET_KEYS.npcCar,
+        ASSET_KEYS.npcBlueCar,
+        ASSET_KEYS.npcGreenCar,
+        ASSET_KEYS.npcRedCar,
+      ];
+
       return {
-        texture: ASSET_KEYS.npcCar,
+        texture: Phaser.Utils.Array.GetRandom(carTextures),
         width: 52,
         height: 72,
         collisionWidth: 34,
@@ -999,6 +1061,7 @@
       goal: "",
       tutorialTitle: "SKILL 1: SHIELD",
       tutorialText: "Collect notes to activate shield.\nA blue aura appears on your car.\nShield blocks one crash automatically.",
+      musicKey: MUSIC_KEYS.level1,
       durationMs: 15000,
       roadWidth: 560,
       startSpeed: 260,
@@ -1018,6 +1081,7 @@
       goal: "Large vehicles join the road.",
       tutorialTitle: "SKILL 2: SHOCKWAVE",
       tutorialText: "Collect 5 notes to charge Shockwave.\nTap the bottom-right button to clear traffic.",
+      musicKey: MUSIC_KEYS.level2,
       durationMs: 18000,
       roadWidth: 520,
       startSpeed: 320,
@@ -1037,6 +1101,7 @@
       goal: "Traffic starts aiming near your lane.",
       tutorialTitle: "SKILL 3: PERFECT DRIFT",
       tutorialText: "Drag farther to drift.\nDrift on the beat to build combo and score faster.",
+      musicKey: MUSIC_KEYS.level3,
       durationMs: 20000,
       roadWidth: 480,
       startSpeed: 380,
@@ -1056,6 +1121,7 @@
       goal: "The road gets tighter.",
       tutorialTitle: "WARNING: NARROW ROAD",
       tutorialText: "The road gets tighter.\nWatch the lanes and save your Shockwave.",
+      musicKey: MUSIC_KEYS.level4,
       durationMs: 22000,
       roadWidth: 430,
       startSpeed: 440,
@@ -1075,6 +1141,7 @@
       goal: "Final traffic wave.",
       tutorialTitle: "FINAL LEVEL",
       tutorialText: "Traffic is fast and dense.\nSurvive this to unlock Extreme Mode.",
+      musicKey: MUSIC_KEYS.level5,
       durationMs: 24000,
       roadWidth: 390,
       startSpeed: 500,
@@ -1093,6 +1160,7 @@
     name: "ENDLESS MODE",
     title: "LONG DRIVE",
     goal: "Speed slowly rises until you crash.",
+    musicKey: MUSIC_KEYS.normalEndless,
     durationMs: Infinity,
     roadWidth: 520,
     startSpeed: 250,
@@ -1110,6 +1178,7 @@
     name: "EXTREME MODE",
     title: "NO SPEED LIMIT",
     goal: "Speed keeps rising until you crash.",
+    musicKey: MUSIC_KEYS.extreme,
     durationMs: Infinity,
     roadWidth: 360,
     startSpeed: 620,
@@ -1205,6 +1274,7 @@
       this.score = 0;
       this.combo = 0;
       this.bestCombo = 0;
+      this.beatComboVisual = 0;
       this.lastBeatWithDrift = -99;
       this.isGameOver = false;
       this.waitingForNextLevel = false;
@@ -1242,8 +1312,11 @@
       this.createColliders();
 
       this.applyLevelDesign(true);
+
       if (!this.isEndlessMode) {
         this.showStartTutorialPanel();
+      } else {
+        this.playCurrentMusic();
       }
     }
 
@@ -1294,6 +1367,8 @@
           this.bestCombo = Math.max(this.bestCombo, this.combo);
           this.score += 100 + this.combo * 8;
           this.pulseUI(0x35f4ff);
+          this.beatComboVisual = this.combo;
+          this.updateBeatBarSize();
         }
         if (this.combo >= 10 && this.combo % 10 === 0 && this.combo !== this.lastComboToast) {
           this.lastComboToast = this.combo;
@@ -1397,16 +1472,32 @@
     }
 
     createUI() {
-      this.uiText = this.add.text(54, 20, "", {
-        fontFamily: "Arial",
-        fontSize: "20px",
+      this.uiText = this.add.text(20, 20, "", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "18px",
         color: "#ffffff",
         lineSpacing: 8,
+        stroke: "#000000",
+        strokeThickness: 3,
       });
       this.uiText.setDepth(10);
 
-      this.beatDot = this.add.image(30, 108, ASSET_KEYS.rhythm);
-      this.beatDot.setDisplaySize(24, 24);
+      this.beatDot = this.add.image(this.scale.width / 2, 42, ASSET_KEYS.rhythm);
+      this.beatDot.setDisplaySize(44, 44);
+      this.beatDot.setDepth(60);
+      this.beatDot.setAlpha(0.9);
+
+      this.beatLabel = this.add.text(this.scale.width / 2, 78, "BEAT", {
+        fontFamily: "Arial Black, Arial",
+        fontSize: "14px",
+        color: "#fff45b",
+        stroke: "#000000",
+        strokeThickness: 3,
+        align: "center",
+      });
+      this.beatLabel.setOrigin(0.5);
+      this.beatLabel.setDepth(60);
+
       this.beatDotBaseScaleX = this.beatDot.scaleX;
       this.beatDotBaseScaleY = this.beatDot.scaleY;
       this.skillButton = this.add.text(
@@ -1434,7 +1525,7 @@
         event?.stopPropagation?.();
         this.useShockwave();
       });
-      this.beatDot.setDepth(10);
+      this.beatDot.setDepth(60);
       this.pauseButton = this.add.text(this.scale.width - 28, 24, "PAUSE", {
         fontFamily: "Arial Black, Arial",
         fontSize: "18px",
@@ -1467,6 +1558,7 @@
       this.toastText.setOrigin(0.5);
       this.toastText.setDepth(900);
       this.toastText.setAlpha(0);
+      this.resetBeatBarSize();
       this.updateUI();
     }
 
@@ -1484,12 +1576,82 @@
       });
       this.physics.add.overlap(this.player, this.notes, (_player, note) => this.collectNote(note));
     }
+    updateBeatBarSize() {
+      const comboValue = this.beatComboVisual || 0;
+
+      const widthBoost = Math.min(comboValue * 0.06, 1.2);
+      const heightBoost = Math.min(comboValue * 0.02, 0.35);
+
+      this.beatDot.setScale(
+        this.beatDotBaseScaleX * (1 + widthBoost),
+        this.beatDotBaseScaleY * (1 + heightBoost)
+      );
+
+      if (this.beatLabel) {
+        const labelBoost = Math.min(comboValue * 0.015, 0.22);
+        this.beatLabel.setScale(1 + labelBoost);
+      }
+    }
+
+    resetBeatBarSize() {
+      this.beatComboVisual = 0;
+
+      this.beatDot.setScale(this.beatDotBaseScaleX, this.beatDotBaseScaleY);
+
+      if (this.beatLabel) {
+        this.beatLabel.setScale(1);
+      }
+    }
+    playCurrentMusic() {
+      const musicKey = this.currentLevel?.musicKey;
+
+      if (!musicKey) return;
+
+      if (this.currentMusicKey === musicKey && this.currentMusic?.isPlaying) {
+        return;
+      }
+
+      this.stopCurrentMusic();
+
+      this.currentMusicKey = musicKey;
+      this.currentMusic = this.sound.add(musicKey, {
+        loop: true,
+        volume: getGameVolume() * 0.75,
+      });
+
+      this.currentMusic.play();
+    }
+
+    stopCurrentMusic() {
+      if (this.currentMusic) {
+        this.currentMusic.stop();
+        this.currentMusic.destroy();
+      }
+
+      this.currentMusic = null;
+      this.currentMusicKey = null;
+    }
+
+    pauseCurrentMusic() {
+      if (this.currentMusic?.isPlaying) {
+        this.currentMusic.pause();
+      }
+    }
+
+    resumeCurrentMusic() {
+      if (this.currentMusic?.isPaused) {
+        this.currentMusic.resume();
+      } else {
+        this.playCurrentMusic();
+      }
+    }
     openPauseMenu() {
       if (this.isGameOver || this.waitingForNextLevel || this.isPausedByUser) return;
 
       this.isPausedByUser = true;
       this.physics.pause();
       this.beatManager.stop();
+      this.pauseCurrentMusic();
 
       const { width, height } = this.scale;
 
@@ -1564,6 +1726,7 @@
       this.beatManager = new BeatManager(this, BPM);
       this.beatManager.onBeat((beat) => this.onBeat(beat));
       this.beatManager.start();
+      this.resumeCurrentMusic();
 
       this.cameras.main.flash(120, 53, 244, 255);
     }
@@ -1571,9 +1734,16 @@
       if (this.waitingForNextLevel) return;
 
       this.waitingForNextLevel = true;
+
       this.beatManager.stop();
+      this.stopCurrentMusic();
       this.physics.pause();
       this.clearTrafficForLevelStart();
+
+      if (this.nextLevelPanel) {
+        this.nextLevelPanel.destroy();
+        this.nextLevelPanel = null;
+      }
 
       if (this.levelIndex >= LEVELS.length - 1) {
         this.showFinalClearPanel();
@@ -1666,6 +1836,7 @@
         this.beatManager = new BeatManager(this, BPM);
         this.beatManager.onBeat((beat) => this.onBeat(beat));
         this.beatManager.start();
+        this.playCurrentMusic();
 
         this.cameras.main.flash(180, 53, 244, 255);
       });
@@ -1788,8 +1959,10 @@
       this.beatManager = new BeatManager(this, BPM);
       this.beatManager.onBeat((beat) => this.onBeat(beat));
       this.beatManager.start();
+      this.playCurrentMusic();
 
       this.cameras.main.flash(240, 53, 244, 255);
+      this.resetBeatBarSize();
     }
 
     applyLevelDesign(firstTime) {
@@ -1931,6 +2104,7 @@
 
       this.beatManager.onBeat((beat) => this.onBeat(beat));
       this.beatManager.start();
+      this.playCurrentMusic();
 
       this.cameras.main.flash(300, 255, 43, 109);
       this.cameras.main.shake(220, 0.012);
@@ -1977,7 +2151,7 @@
 
       for (let lane = 0; lane < laneCount; lane += 1) {
         const x = this.roadLeft + laneWidth * lane + laneWidth / 2;
-        const type = lane % 2 === 0 ? "wall" : "block";
+        const type = lane === 2 ? "sideTruck" : lane % 2 === 0 ? "wall" : "block";
 
         const obstacle = new Obstacle(
           this,
@@ -2111,6 +2285,8 @@
           this.score += SHOCKWAVE_CLEAR_SCORE;
         }
       });
+
+      this.resetBeatBarSize();
 
       this.cameras.main.flash(180, 53, 244, 255);
       this.cameras.main.shake(140, 0.008);
@@ -2274,6 +2450,7 @@
       this.combo = 0;
       this.beatManager.playCrashSound();
       this.beatManager.stop();
+      this.stopCurrentMusic();
       this.physics.pause();
       this.cameras.main.shake(260, 0.018);
       this.cameras.main.flash(180, 255, 43, 109);
@@ -2293,6 +2470,7 @@
           combo: this.bestCombo,
         });
       });
+      this.resetBeatBarSize();
     }
   }
 
@@ -2315,9 +2493,9 @@
       this.cameras.main.setBackgroundColor("#070713");
 
       this.add
-        .text(width / 2, height * 0.16, "CRASHED", {
+        .text(width / 2, height * 0.08, "CRASHED", {
           fontFamily: "Arial Black, Arial",
-          fontSize: "54px",
+          fontSize: "56px",
           color: "#ff2b6d",
           stroke: "#ffffff",
           strokeThickness: 2,
@@ -2325,14 +2503,16 @@
         .setOrigin(0.5);
 
       this.add
-        .text(width / 2, height * 0.30, `Score ${this.score}\nBest Combo ${this.combo}`, {
-          fontFamily: "Arial",
+        .text(width / 2, height * 0.22, `Score ${this.score}\nBest Combo ${this.combo}`, {
+          fontFamily: "Arial Black, Arial",
           fontSize: "24px",
           color: "#35f4ff",
           align: "center",
-          lineSpacing: 10,
+          lineSpacing: 12,
+          stroke: "#000000",
+          strokeThickness: 3,
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5, 0);
 
       const leaderboardText = leaderboard
         .map((entry, index) => {
@@ -2341,24 +2521,37 @@
         .join("\n");
 
       this.add
-        .text(width / 2, height * 0.50, `Leaderboard\n${leaderboardText}`, {
+        .text(width / 2, height * 0.39, "LEADERBOARD", {
+          fontFamily: "Arial Black, Arial",
+          fontSize: "28px",
+          color: "#fff45b",
+          align: "center",
+          stroke: "#000000",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5, 0);
+
+      this.add
+        .text(width / 2, height * 0.47, leaderboardText, {
           fontFamily: "Arial",
           fontSize: "22px",
           color: "#fff45b",
           align: "center",
-          lineSpacing: 8,
+          lineSpacing: 7,
+          stroke: "#000000",
+          strokeThickness: 2,
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5, 0);
 
       const retry = this.add
-        .text(width / 2, height * 0.74, "Touch to Retry", {
-          fontFamily: "Arial",
+        .text(width / 2, height * 0.80, "Touch to Retry", {
+          fontFamily: "Arial Black, Arial",
           fontSize: "24px",
           color: "#ffffff",
           backgroundColor: "#111827",
           padding: {
-            x: 18,
-            y: 10,
+            x: 22,
+            y: 12,
           },
         })
         .setOrigin(0.5)
@@ -2367,7 +2560,7 @@
       this.tweens.add({
         targets: retry,
         scale: 1.06,
-        alpha: 0.55,
+        alpha: 0.65,
         duration: 420,
         yoyo: true,
         repeat: -1,
@@ -2392,9 +2585,10 @@
       this.input.keyboard.once("keydown-SPACE", restartGame);
 
       const backButton = this.add
-        .text(width / 2, height * 0.88, "Back to Main Menu", {
+        .text(width / 2, height * 0.91, "Back to Main Menu", {
           fontFamily: "Arial",
-          fontSize: "22px",
+          fontSize: "20px",
+          color: "#ffffff",
           backgroundColor: "#111827",
           padding: {
             x: 18,
@@ -2413,7 +2607,7 @@
       });
 
       backButton.on("pointerdown", () => {
-        this.cameras.main.fadeOut(350, 0, 0, 0);
+        this.cameras.main.fadeOut(260, 0, 0, 0);
 
         this.cameras.main.once("camerafadeoutcomplete", () => {
           window.location.href = MAIN_MENU_URL;
