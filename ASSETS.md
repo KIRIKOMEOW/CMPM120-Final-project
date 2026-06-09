@@ -47,53 +47,16 @@ All assets for this project were created using AI-powered tools combined with ma
 
 ## Audio Assets
 
-### Music & Sound Effects
-**Generation Tool**: Suno AI
+## Music Assets
 
-**Creation Process**:
+The music files in `assets/music/` were created by our team for this project. We used LMMS to make the electronic music loops and Audacity to edit/export them as WAV files.
 
-#### 1. Audio Type Definition
-- Determined whether the asset was needed for:
-  - **Background Music**: Long, looping tracks for ambient gameplay
-  - **Sound Effects**: Short, contextual audio for specific game events
+* `level_1_open_road_150bpm.wav` — Level 1 background music
+* `level_2_truck_traffic_150bpm.wav` — Level 2 background music
+* `level_3_lane_pressure_150bpm.wav` — Level 3 background music
+* `level_4_narrow_run_150bpm.wav` — Level 4 background music
+* `level_5_burnout_rush_150bpm.wav` — Level 5 background music
+* `normal_endless_long_drive_150bpm.wav` — Normal Endless Mode music
+* `extreme_mode_no_speed_limit_150bpm.wav` — Extreme Mode music
 
-#### 2. Prompt Development for Suno AI
-- Created detailed music generation prompts specifying:
-  - **Theme**: Futuristic/cyberpunk
-  - **Mood**: Appropriate for the game context (energetic for action, ambient for exploration, etc.)
-  - **Instrumentation**: Synthetic, electronic elements to match the aesthetic
-  - **Duration**: Appropriate length for the intended use case
-  - **Tempo**: Specified BPM or energy level
-
-#### 3. Generation & Iteration
-- Submitted prompts to Suno AI
-- Generated multiple audio tracks (typically 2-3 variations)
-- Previewed each track in the context of gameplay
-- Re-generated with refined prompts if initial results didn't fit the futuristic/cyberpunk theme
-
-#### 4. Selection & Testing
-- Selected the best-fitting audio asset based on:
-  - Thematic alignment with cyberpunk aesthetic
-  - Audio quality and clarity
-  - Seamless looping (for background music)
-  - Appropriate duration and intensity
-- Tested audio integration into the game engine
-
-#### 5. Post-Processing (if needed)
-- Adjusted volume levels to prevent clipping
-- Ensured consistent audio levels across different assets
-- Exported in appropriate format for web/game integration (typically .mp3 or .wav)
-
-### Audio Types
-- **Background Music**: Looping tracks designed for gameplay atmosphere
-- **Sound Effects**: Contextual audio for game events and interactions
-
-### Benefits of This Approach
-- Thematic consistency with visual elements
-- No licensing concerns with AI-generated content
-- Quick turnaround for audio production
-- Full creative control over sound design
-
-## Asset Organization
-Assets are stored in the `assets/` folder and organized by type for easy access during development and gameplay.
-
+These tracks are original assets made specifically for this game prototype.
