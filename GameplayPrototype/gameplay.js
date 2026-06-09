@@ -886,15 +886,6 @@
         })
         .setOrigin(0.5);
 
-      this.add
-        .text(width / 2, height * 0.48, "RUNNER PROTOTYPE", {
-          fontFamily: "Arial",
-          fontSize: "22px",
-          color: "#fff45b",
-          letterSpacing: 4,
-        })
-        .setOrigin(0.5);
-
       const prompt = this.add
         .text(width / 2, height * 0.60, "START LEVELS", {
           fontFamily: "Arial",
