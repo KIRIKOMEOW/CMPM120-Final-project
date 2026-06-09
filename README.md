@@ -6,6 +6,11 @@ https://kirikomeow.github.io/CMPM120-Final-project/cinematics-prototype/
 Source code:  
 https://github.com/KIRIKOMEOW/CMPM120-Final-project
 
+Team Roles
+- Zhizhuo Xu — Production Lead
+- Michael Pu Yang — Technology Lead
+- Weichen Sun — Art Lead
+
 About
 This is the scene flow prototype for Bassline Burnout. It connects the title screen, loading scene, main menu, settings, credits, gameplay, crash screen, and leaderboard.
 
@@ -15,7 +20,7 @@ Scene Types
 - Main menu with Start Game, Settings, Credits, and Exit
 - Settings scene for volume control
 - Credits scene reachable from the main menu
-- Gameplay scene for the Music Drift runner
+- Gameplay scene for the Bassline Burnout rhythm-driving runner
 - Crash/game over scene with score, leaderboard, retry, and return options
 
 Communication Between Scenes
