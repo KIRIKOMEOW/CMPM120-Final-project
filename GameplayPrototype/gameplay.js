@@ -56,13 +56,13 @@
   };
 
   const MUSIC_PATHS = {
-    [MUSIC_KEYS.level1]: "../assets/music/level_1_open_road_150bpm.wav",
-    [MUSIC_KEYS.level2]: "../assets/music/level_2_truck_traffic_150bpm.wav",
-    [MUSIC_KEYS.level3]: "../assets/music/level_3_lane_pressure_150bpm.wav",
-    [MUSIC_KEYS.level4]: "../assets/music/level_4_narrow_run_150bpm.wav",
-    [MUSIC_KEYS.level5]: "../assets/music/level_5_burnout_rush_150bpm.wav",
-    [MUSIC_KEYS.normalEndless]: "../assets/music/normal_endless_long_drive_150bpm.wav",
-    [MUSIC_KEYS.extreme]: "../assets/music/extreme_mode_no_speed_limit_150bpm.wav",
+    [MUSIC_KEYS.level1]: "../assets/level_1_open_road_150bpm.wav",
+    [MUSIC_KEYS.level2]: "../assets/level_2_truck_traffic_150bpm.wav",
+    [MUSIC_KEYS.level3]: "../assets/level_3_lane_pressure_150bpm.wav",
+    [MUSIC_KEYS.level4]: "../assets/level_4_narrow_run_150bpm.wav",
+    [MUSIC_KEYS.level5]: "../assets/level_5_burnout_rush_150bpm.wav",
+    [MUSIC_KEYS.normalEndless]: "../assets/normal_endless_long_drive_150bpm.wav",
+    [MUSIC_KEYS.extreme]: "../assets/extreme_mode_no_speed_limit_150bpm.wav",
   };
 
   function preloadGameplayAssets(scene) {
@@ -1597,6 +1597,11 @@
       const musicKey = this.currentLevel?.musicKey;
 
       if (!musicKey) return;
+
+      if (!this.cache.audio.exists(musicKey)) {
+        console.warn("Music not loaded, skipping:", musicKey);
+        return;
+      }
 
       if (this.currentMusicKey === musicKey && this.currentMusic?.isPlaying) {
         return;
