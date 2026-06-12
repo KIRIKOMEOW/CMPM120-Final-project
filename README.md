@@ -1,5 +1,12 @@
 Bassline Burnout Scene Flow Prototype:
+
 https://kirikomeow.github.io/CMPM120-Final-project/scene-flow-1.html
+
+### Scene Flow Explanation
+
+The scene flow prototype links to the real prototype scenes that already exist in this project. Players begin at the Main Title Scene. From there, clicking **Start Game** leads into the Cinematic / Opening Scene, and the cinematic then leads into the Gameplay Prototype. In the gameplay scene, the player reaches the **Good Ending** if they win the challenge, or the **Bad Ending** if they lose or fail. The **Credits Scene** can also be opened directly from the title/menu without finishing the game first.
+
+The scene flow page also provides direct buttons for each scene so the grader can test every path quickly. These buttons represent the same transitions used in the prototype, such as starting the game, continuing after the cinematic, winning, losing, restarting, or opening credits.
 
 Playable link:  
 https://kirikomeow.github.io/CMPM120-Final-project/cinematics-prototype/
