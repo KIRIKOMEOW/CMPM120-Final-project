@@ -10,7 +10,9 @@
   const VOLUME_KEY = "basslineBurnoutVolume";
   const DEFAULT_VOLUME = 0.3;
   const MAIN_MENU_URL = "../cinematics-prototype/index.html?scene=mainMenu";
+  const CREDITS_URL = "../cinematics-prototype/index.html?scene=creditsScene";
   const LEADERBOARD_KEY = "basslineBurnoutLeaderboard";
+  const SCENE_FLOW_KEYS = ["MenuScene", "GameScene", "GameOverScene"];
   const ASSET_KEYS = {
     background: "road-background",
     note: "ui-note",
@@ -91,6 +93,26 @@
     }
     return DEFAULT_VOLUME;
   }
+
+  function getRequestedGameplaySceneKey() {
+    const requestedScene = new URLSearchParams(window.location.search).get("scene");
+    return SCENE_FLOW_KEYS.includes(requestedScene) ? requestedScene : "MenuScene";
+  }
+
+  function getSceneFlowLaunchData() {
+    const params = new URLSearchParams(window.location.search);
+    const outcome = params.get("outcome");
+    const score = Number(params.get("score"));
+    const combo = Number(params.get("combo"));
+
+    return {
+      source: "sceneFlow",
+      outcome: outcome === "win" ? "win" : "lose",
+      score: Number.isFinite(score) ? score : 0,
+      combo: Number.isFinite(combo) ? combo : 0,
+    };
+  }
+
   function getLeaderboard() {
     const saved = localStorage.getItem(LEADERBOARD_KEY);
 
@@ -121,6 +143,19 @@
 
     return topScores;
   }
+
+  class SceneFlowRouter extends Phaser.Scene {
+    constructor() {
+      super("SceneFlowRouter");
+    }
+
+    create() {
+      const requestedScene = getRequestedGameplaySceneKey();
+      const data = requestedScene === "GameOverScene" ? getSceneFlowLaunchData() : {};
+      this.scene.start(requestedScene, data);
+    }
+  }
+
   function isFullscreen() {
     return document.fullscreenElement || document.webkitFullscreenElement;
   }
@@ -2478,28 +2513,48 @@
     init(data) {
       this.score = data.score ?? 0;
       this.combo = data.combo ?? 0;
+      this.outcome = data.outcome ?? "lose";
+      this.launchedFromSceneFlow = data.source === "sceneFlow";
     }
 
     create() {
       const { width, height } = this.scale;
 
-      const playerName = window.prompt("Enter your name for the leaderboard:", "Player");
-      const leaderboard = saveLeaderboardScore(playerName, this.score);
+      const playerName = this.launchedFromSceneFlow
+        ? "Scene Flow"
+        : window.prompt("Enter your name for the leaderboard:", "Player");
+      const leaderboard = this.launchedFromSceneFlow
+        ? getLeaderboard()
+        : saveLeaderboardScore(playerName, this.score);
+      const isWin = this.outcome === "win";
+      const resultTitle = isWin ? "RUN COMPLETE" : "CRASHED";
+      const resultColor = isWin ? "#35ff99" : "#ff2b6d";
+      const resultLabel = isWin ? "Good Ending / Win Result" : "Bad Ending / Lose Result";
 
       this.cameras.main.setBackgroundColor("#070713");
 
       this.add
-        .text(width / 2, height * 0.08, "CRASHED", {
+        .text(width / 2, height * 0.08, resultTitle, {
           fontFamily: "Arial Black, Arial",
           fontSize: "56px",
-          color: "#ff2b6d",
+          color: resultColor,
           stroke: "#ffffff",
           strokeThickness: 2,
         })
         .setOrigin(0.5);
 
       this.add
-        .text(width / 2, height * 0.22, `Score ${this.score}\nBest Combo ${this.combo}`, {
+        .text(width / 2, height * 0.17, resultLabel, {
+          fontFamily: "Arial Black, Arial",
+          fontSize: "18px",
+          color: "#ffffff",
+          stroke: "#000000",
+          strokeThickness: 2,
+        })
+        .setOrigin(0.5);
+
+      this.add
+        .text(width / 2, height * 0.25, `Score ${this.score}\nBest Combo ${this.combo}`, {
           fontFamily: "Arial Black, Arial",
           fontSize: "24px",
           color: "#35f4ff",
@@ -2517,7 +2572,7 @@
         .join("\n");
 
       this.add
-        .text(width / 2, height * 0.39, "LEADERBOARD", {
+        .text(width / 2, height * 0.42, "LEADERBOARD", {
           fontFamily: "Arial Black, Arial",
           fontSize: "28px",
           color: "#fff45b",
@@ -2528,7 +2583,7 @@
         .setOrigin(0.5, 0);
 
       this.add
-        .text(width / 2, height * 0.47, leaderboardText, {
+        .text(width / 2, height * 0.50, leaderboardText || "No scores yet", {
           fontFamily: "Arial",
           fontSize: "22px",
           color: "#fff45b",
@@ -2581,7 +2636,21 @@
       this.input.keyboard.once("keydown-SPACE", restartGame);
 
       const backButton = this.add
-        .text(width / 2, height * 0.91, "Back to Main Menu", {
+        .text(width * 0.36, height * 0.91, "Back to Main Menu", {
+          fontFamily: "Arial",
+          fontSize: "20px",
+          color: "#ffffff",
+          backgroundColor: "#111827",
+          padding: {
+            x: 18,
+            y: 10,
+          },
+        })
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
+
+      const creditsButton = this.add
+        .text(width * 0.64, height * 0.91, "View Credits", {
           fontFamily: "Arial",
           fontSize: "20px",
           color: "#ffffff",
@@ -2609,6 +2678,22 @@
           window.location.href = MAIN_MENU_URL;
         });
       });
+
+      creditsButton.on("pointerover", () => {
+        creditsButton.setStyle({ color: "#fff45b" });
+      });
+
+      creditsButton.on("pointerout", () => {
+        creditsButton.setStyle({ color: "#ffffff" });
+      });
+
+      creditsButton.on("pointerdown", () => {
+        this.cameras.main.fadeOut(260, 0, 0, 0);
+
+        this.cameras.main.once("camerafadeoutcomplete", () => {
+          window.location.href = CREDITS_URL;
+        });
+      });
     }
   }
 
@@ -2629,7 +2714,7 @@
         debug: false,
       },
     },
-    scene: [MenuScene, GameScene, GameOverScene],
+    scene: [SceneFlowRouter, MenuScene, GameScene, GameOverScene],
   };
 
   window.game = new Phaser.Game(config);

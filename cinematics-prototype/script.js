@@ -1,6 +1,18 @@
 const VOLUME_KEY = 'basslineBurnoutVolume';
 const DEFAULT_VOLUME = 0.3;
 const GAMEPLAY_URL = '../GameplayPrototype/index.html';
+const SCENE_FLOW_KEYS = [
+    'basslineBurnout_Intro',
+    'loadingScreen',
+    'mainMenu',
+    'settingsScene',
+    'creditsScene'
+];
+
+function getRequestedSceneKey() {
+    const requestedScene = new URLSearchParams(window.location.search).get('scene');
+    return SCENE_FLOW_KEYS.includes(requestedScene) ? requestedScene : 'basslineBurnout_Intro';
+}
 
 function getGameVolume() {
     const savedValue = localStorage.getItem(VOLUME_KEY);
@@ -20,6 +32,17 @@ function setGameVolume(value) {
     localStorage.setItem(VOLUME_KEY, String(safeVolume));
     return safeVolume;
 }
+
+class SceneFlowRouter extends Phaser.Scene {
+    constructor() {
+        super({ key: 'sceneFlowRouter' });
+    }
+
+    create() {
+        this.scene.start(getRequestedSceneKey());
+    }
+}
+
 class BasslineBurnout_Intro extends Phaser.Scene {
     constructor() {
         super({ key: 'basslineBurnout_Intro' });
@@ -424,7 +447,7 @@ class CreditsScene extends Phaser.Scene {
         this.cameras.main.setBackgroundColor('#c7c7c7');
         this.cameras.main.fadeIn(1000, 0, 0, 0);
 
-        let creditsText = this.add.text(960, 460, 'Game Design: Weichen Sun\nProgramming: Weichen Sun\nArt: Weichen Sun\nWheel gif: https://giphy.com/explore/spinning-tire-stickers \nLoading gif: https://giphy.com/explore/%D8%AA%D9%81%D8%AD%D9%8A%D8%B7-stickers\nStart game image:https://www.latimes.com/california/story/2022-12-29/los-angeles-times-photojournalist-looks-back-at-a-street-takeover-in-compton\nMusic: https://bvker.com/?srsltid=AfmBOorJpVGjx1fXznsu1p74DxMP1155bEkyl-Olk2oe-9aE5Y1z1fXP', {
+        let creditsText = this.add.text(960, 460, 'Production leader: Zhizhuo Xu\nCoding leader: Michael Pu Yang\nArt Leader: Weichen Sun\nWheel gif: https://giphy.com/explore/spinning-tire-stickers \nLoading gif: https://giphy.com/explore/%D8%AA%D9%81%D8%AD%D9%8A%D8%B7-stickers\nStart game image:https://www.latimes.com/california/story/2022-12-29/los-angeles-times-photojournalist-looks-back-at-a-street-takeover-in-compton\nMusic: https://bvker.com/?srsltid=AfmBOorJpVGjx1fXznsu1p74DxMP1155bEkyl-Olk2oe-9aE5Y1z1fXP', {
             font: '20px impact',
             fill: '#000000',
             align: 'center'
@@ -467,7 +490,7 @@ let config = {
         height: 1080, // Logical height
     },
     backgroundColor: '#000000',
-    scene: [BasslineBurnout_Intro, LoadingScreen, MainMenu, SettingsScene, CreditsScene]
+    scene: [SceneFlowRouter, BasslineBurnout_Intro, LoadingScreen, MainMenu, SettingsScene, CreditsScene]
 };
 
 let game = new Phaser.Game(config);

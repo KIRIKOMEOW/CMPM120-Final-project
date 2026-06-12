@@ -3,42 +3,308 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Scene Flow Prototype 1</title>
+    <title>Bassline Burnout Scene Flow Launcher</title>
     <style>
+      :root {
+        --bg: #f7f8fb;
+        --ink: #172033;
+        --muted: #5a667a;
+        --line: #d9e1ee;
+        --accent: #e14d3d;
+        --accent-dark: #a72822;
+        --cool: #1c7c9f;
+        --good: #227a4c;
+        --bad: #9d2b2e;
+        --shadow: 0 18px 42px rgba(23, 32, 51, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
         margin: 0;
         font-family: Arial, Helvetica, sans-serif;
-        background: #f8f9fb;
-        color: #1f2933;
+        background:
+          linear-gradient(135deg, rgba(225, 77, 61, 0.10), transparent 34%),
+          linear-gradient(315deg, rgba(28, 124, 159, 0.14), transparent 38%),
+          var(--bg);
+        color: var(--ink);
       }
 
       main {
-        max-width: 760px;
+        width: min(1120px, 100%);
         margin: 0 auto;
-        padding: 40px 20px;
+        padding: 28px 18px 44px;
       }
 
-      .flow {
+      header {
+        margin-bottom: 22px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 8px;
+        font-size: clamp(2rem, 5vw, 4rem);
+        line-height: 1;
+      }
+
+      h2 {
+        margin-bottom: 10px;
+        font-size: clamp(1.45rem, 3vw, 2.25rem);
+      }
+
+      p {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      code {
+        color: var(--accent-dark);
+      }
+
+      .eyebrow {
+        margin-bottom: 8px;
+        color: var(--accent-dark);
+        font-size: 0.85rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      .notice,
+      .flow-map,
+      .launcher-panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: var(--shadow);
+      }
+
+      .notice {
+        margin-bottom: 20px;
+        padding: 16px 18px;
+      }
+
+      .notice strong {
+        color: var(--accent-dark);
+      }
+
+      .layout {
         display: grid;
-        gap: 16px;
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 390px);
+        gap: 20px;
+        align-items: start;
       }
 
-      .step {
-        border-left: 6px solid #3f88c5;
-        padding: 16px;
+      .launcher-panel,
+      .flow-map {
+        padding: 20px;
+      }
+
+      .scene-links {
+        display: grid;
+        gap: 12px;
+      }
+
+      .scene-link {
+        display: grid;
+        gap: 6px;
+        min-height: 84px;
+        border: 1px solid var(--line);
+        border-left: 7px solid var(--accent);
+        border-radius: 8px;
+        padding: 15px 16px;
         background: #ffffff;
+        color: var(--ink);
+        text-decoration: none;
+        transition: opacity 180ms ease, transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+      }
+
+      .scene-link:hover,
+      .scene-link:focus-visible {
+        border-color: var(--accent);
+        box-shadow: 0 12px 24px rgba(23, 32, 51, 0.16);
+        outline: none;
+        opacity: 0.92;
+        transform: translateY(-2px);
+      }
+
+      .scene-link.good {
+        border-left-color: var(--good);
+      }
+
+      .scene-link.bad {
+        border-left-color: var(--bad);
+      }
+
+      .scene-link.cool {
+        border-left-color: var(--cool);
+      }
+
+      .scene-title {
+        font-size: 1.08rem;
+        font-weight: 800;
+      }
+
+      .scene-description {
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .target {
+        color: var(--cool);
+        font-size: 0.9rem;
+        overflow-wrap: anywhere;
+      }
+
+      aside {
+        display: grid;
+        gap: 20px;
+      }
+
+      .flow-list,
+      .scene-key-list {
+        display: grid;
+        gap: 9px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .flow-list li,
+      .scene-key-list li {
+        border-left: 4px solid var(--cool);
+        padding: 9px 10px;
+        background: #f7fbff;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+
+      @media (max-width: 840px) {
+        main {
+          padding: 22px 14px 36px;
+        }
+
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .scene-link {
+          min-height: 96px;
+          padding: 16px;
+        }
       }
     </style>
   </head>
   <body>
     <main>
-      <h1>Scene Flow Prototype 1</h1>
-      <section class="flow" aria-label="scene flow">
-        <div class="step">Title screen: start game and choose settings.</div>
-        <div class="step">Exploration scene: introduce the player objective.</div>
-        <div class="step">Challenge scene: test the first obstacle.</div>
-        <div class="step">Results scene: show outcome and restart path.</div>
+      <header>
+        <p class="eyebrow">CMPM120 Scene Flow Prototype</p>
+        <h1>Bassline Burnout Scene Flow Launcher</h1>
+        <p>
+          Use these cards to jump into the actual prototype pages and Phaser scenes that already
+          exist in this project.
+        </p>
+      </header>
+
+      <section class="notice" aria-label="prototype note">
+        <p>
+          <strong>This scene flow prototype links to the actual existing scenes/prototypes in this project, instead of using placeholder mock scenes.</strong>
+        </p>
+        <p>
+          The launcher cards use a simple hover/fade transition, then navigate to real relative
+          URLs such as <code>./cinematics-prototype/index.html?scene=creditsScene</code> and
+          <code>./GameplayPrototype/index.html?scene=GameScene</code>.
+        </p>
+        <p>
+          The current gameplay code uses <code>GameOverScene</code> as its real result scene, so
+          the win and lose buttons launch that existing scene with <code>outcome=win</code> or
+          <code>outcome=lose</code>.
+        </p>
       </section>
+
+      <div class="layout">
+        <section class="launcher-panel" aria-label="real scene launch links">
+          <h2>Real Scene / Prototype Links</h2>
+          <div class="scene-links">
+            <a class="scene-link" href="./cinematics-prototype/index.html?scene=basslineBurnout_Intro">
+              <span class="scene-title">Main Title Scene</span>
+              <span class="scene-description">Player starts from the Bassline Burnout title and clicks to begin the flow.</span>
+              <span class="target">Opens: cinematics-prototype/index.html?scene=basslineBurnout_Intro</span>
+            </a>
+
+            <a class="scene-link cool" href="./cinematics-prototype/index.html?scene=mainMenu">
+              <span class="scene-title">Menu / Settings Scene</span>
+              <span class="scene-description">Player reaches the menu, can start gameplay, change settings, or open credits.</span>
+              <span class="target">Opens: cinematics-prototype/index.html?scene=mainMenu</span>
+            </a>
+
+            <a class="scene-link cool" href="./cinematics-prototype/index.html?scene=loadingScreen">
+              <span class="scene-title">Cinematic / Opening Scene</span>
+              <span class="scene-description">After the title interaction, the loading/opening scene leads into the main menu.</span>
+              <span class="target">Opens: cinematics-prototype/index.html?scene=loadingScreen</span>
+            </a>
+
+            <a class="scene-link" href="./GameplayPrototype/index.html?scene=GameScene">
+              <span class="scene-title">Gameplay Prototype Scene</span>
+              <span class="scene-description">After the cinematic/menu flow, the player enters the rhythm-driving gameplay challenge.</span>
+              <span class="target">Opens: GameplayPrototype/index.html?scene=GameScene</span>
+            </a>
+
+            <a class="scene-link good" href="./GameplayPrototype/index.html?scene=GameOverScene&outcome=win&score=5000&combo=24">
+              <span class="scene-title">Good Ending / Win Result</span>
+              <span class="scene-description">If the player wins the gameplay challenge, the existing result scene opens in win mode.</span>
+              <span class="target">Opens: GameplayPrototype/index.html?scene=GameOverScene&amp;outcome=win</span>
+            </a>
+
+            <a class="scene-link bad" href="./GameplayPrototype/index.html?scene=GameOverScene&outcome=lose&score=1200&combo=6">
+              <span class="scene-title">Bad Ending / Lose Result</span>
+              <span class="scene-description">If the player loses or crashes, the existing GameOverScene shows the failure result.</span>
+              <span class="target">Opens: GameplayPrototype/index.html?scene=GameOverScene&amp;outcome=lose</span>
+            </a>
+
+            <a class="scene-link cool" href="./cinematics-prototype/index.html?scene=creditsScene">
+              <span class="scene-title">Credits Scene</span>
+              <span class="scene-description">Credits can be reached directly from the title/menu without finishing the game.</span>
+              <span class="target">Opens: cinematics-prototype/index.html?scene=creditsScene</span>
+            </a>
+
+            <a class="scene-link" href="./cinematics-prototype/index.html?scene=mainMenu">
+              <span class="scene-title">Restart / Back to Title</span>
+              <span class="scene-description">Good Ending, Bad Ending, and Credits can route the player back to the real menu/title flow.</span>
+              <span class="target">Opens: cinematics-prototype/index.html?scene=mainMenu</span>
+            </a>
+          </div>
+        </section>
+
+        <aside>
+          <section class="flow-map" aria-label="scene flow documentation">
+            <h2>Scene Flow Map / Documentation</h2>
+            <ul class="flow-list">
+              <li>Title -> Cinematic / Opening</li>
+              <li>Cinematic / Opening -> Gameplay Prototype</li>
+              <li>Gameplay -> Good Ending if player wins</li>
+              <li>Gameplay -> Bad Ending if player loses</li>
+              <li>Good Ending / Bad Ending -> Credits or Restart</li>
+              <li>Title / Menu -> Credits</li>
+            </ul>
+          </section>
+
+          <section class="flow-map" aria-label="existing scene keys">
+            <h2>Existing Scene Keys Used</h2>
+            <ul class="scene-key-list">
+              <li><code>basslineBurnout_Intro</code>, <code>loadingScreen</code>, <code>mainMenu</code>, <code>settingsScene</code>, <code>creditsScene</code></li>
+              <li><code>MenuScene</code>, <code>GameScene</code>, <code>GameOverScene</code></li>
+            </ul>
+          </section>
+        </aside>
+      </div>
     </main>
   </body>
 </html>
